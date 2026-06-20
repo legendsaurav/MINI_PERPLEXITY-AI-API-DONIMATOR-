@@ -58,7 +58,7 @@ Instead of using REST APIs, this app manages "hidden browsers" (Electron Browser
 ### Installation
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/your-repo/desktop-ai-copilot.git
+    git clone https://github.com/legendsaurav/MINI_PERPLEXITY-AI-API-DONIMATOR-/desktop-ai-copilot.git
     cd desktop-ai-copilot
     ```
 2.  Install dependencies:
