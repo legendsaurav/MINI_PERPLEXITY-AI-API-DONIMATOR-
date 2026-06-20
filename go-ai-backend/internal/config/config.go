@@ -42,8 +42,8 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		ServerAddress: getEnv("SERVER_ADDRESS", ":8080"),
-		SupabaseURL:   getEnv("SUPABASE_URL", "https://cowmafailphyzkvodjdl.supabase.co"),
-		SupabaseKey:   getEnv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvd21hZmFpbHBoeXprdm9kamRsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTQzOTU1NCwiZXhwIjoyMDk3MDE1NTU0fQ.B9Zl7KYSldGO_8B-LxL-yiaupT0K9jccRChs079VsDU"),
+		SupabaseURL:   getEnv("SUPABASE_URL", ""),
+		SupabaseKey:   getEnv("SUPABASE_KEY", ""),
 		Browser: BrowserConfig{
 			MaxRunning:  maxRunning,
 			IdleTimeout: idleTimeout,

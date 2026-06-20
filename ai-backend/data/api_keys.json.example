@@ -1,0 +1,16 @@
+{
+  "keys": [
+    {
+      "id": "YOUR_KEY_ID_UUID",
+      "user_id": "YOUR_USER_ID_UUID",
+      "username": "your-username",
+      "key_hash": "SHA256_HASH_OF_YOUR_API_KEY_WITH_sk-_PREFIX",
+      "workspace_id": "YOUR_WORKSPACE_ID_UUID",
+      "provider": "chatgpt",
+      "permissions": "full",
+      "status": "active",
+      "created_at": "2026-06-21T00:00:00Z",
+      "device_name": "device"
+    }
+  ]
+}

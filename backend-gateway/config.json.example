@@ -1,7 +1,7 @@
 {
   "port": "8080",
-  "database_url": "postgres://postgres:password@localhost:5432/postgres",
-  "api_key": "your-secret-key",
+  "database_url": "postgres://USER:PASSWORD@HOST:PORT/DBNAME",
+  "api_key": "YOUR_GATEWAY_API_KEY",
   "models": {
     "gpt-4": "https://api.openai.com/v1",
     "gpt-3.5-turbo": "https://api.openai.com/v1",

@@ -23,3 +23,10 @@ yarn-error.log*
 # System files
 .DS_Store
 Thumbs.db
+
+# Sensitive Local Configurations
+backend-gateway/keys.txt
+backend-gateway/config.json
+ai-backend/config.yaml
+ai-backend/data/api_keys.json
+

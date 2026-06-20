@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/your-repo/ai-gateway-backend/internal/api"
 	"github.com/your-repo/ai-gateway-backend/internal/repository/postgres"
@@ -11,7 +10,6 @@ import (
 	routerSvc "github.com/your-repo/ai-gateway-backend/internal/services/router"
 	"github.com/your-repo/ai-gateway-backend/pkg/config"
 	"github.com/your-repo/ai-gateway-backend/pkg/logger"
-	"log"
 	"os"
 )
 
