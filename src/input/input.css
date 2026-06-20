@@ -1,0 +1,327 @@
+/* ───────────────────────────────────────────────
+   Copilot Input Bar — Dark Glassmorphism Theme
+   ─────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-glass: rgba(15, 15, 20, 0.82);
+  --bg-glass-hover: rgba(20, 20, 28, 0.88);
+  --border-idle: rgba(255, 255, 255, 0.08);
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-placeholder: rgba(255, 255, 255, 0.32);
+  --purple: #a78bfa;
+  --blue: #60a5fa;
+  --cyan: #22d3ee;
+  --badge-bg: rgba(139, 92, 246, 0.18);
+  --badge-border: rgba(139, 92, 246, 0.45);
+  --badge-glow: rgba(139, 92, 246, 0.5);
+  --shadow-color: rgba(0, 0, 0, 0.55);
+  --enter-bg: rgba(255, 255, 255, 0.06);
+  --enter-border: rgba(255, 255, 255, 0.10);
+  --enter-text: rgba(255, 255, 255, 0.30);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Wrapper (pill container + border) ── */
+
+.input-wrapper {
+  position: relative;
+  width: 540px;
+  height: 54px;
+  border-radius: 27px;
+  /* Appear animation */
+  opacity: 0;
+  transform: scale(0.92) translateY(6px);
+  animation: appearIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes appearIn {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── Animated Gradient Border ── */
+
+.gradient-border {
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 28px;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--angle, 0deg),
+    var(--purple),
+    var(--blue),
+    var(--cyan),
+    var(--blue),
+    var(--purple)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  animation: rotateBorder 4s linear infinite;
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes rotateBorder {
+  to { --angle: 360deg; }
+}
+
+/* Show gradient border on focus-within */
+.input-wrapper.focused .gradient-border {
+  opacity: 1;
+}
+
+/* Subtle glow behind the bar */
+.input-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 33px;
+  background: conic-gradient(
+    from var(--angle, 0deg),
+    var(--purple),
+    var(--blue),
+    var(--cyan),
+    var(--blue),
+    var(--purple)
+  );
+  filter: blur(18px);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  z-index: -1;
+  animation: rotateBorder 4s linear infinite;
+}
+
+.input-wrapper.focused::before {
+  opacity: 0.25;
+}
+
+/* ── Glass Container ── */
+
+.input-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 27px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid var(--border-idle);
+  box-shadow:
+    0 8px 32px var(--shadow-color),
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 10px;
+  transition: background 0.3s ease, border-color 0.3s ease;
+  overflow: hidden;
+}
+
+.input-wrapper.focused .input-container {
+  background: var(--bg-glass-hover);
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Sparkle Icon ── */
+
+.icon-sparkle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: sparkleFloat 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.35));
+}
+
+@keyframes sparkleFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-1.5px) rotate(3deg); }
+  75%      { transform: translateY(1px) rotate(-2deg); }
+}
+
+/* ── Screenshot Badge ── */
+
+.screenshot-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 12px;
+  background: var(--badge-bg);
+  border: 1px solid var(--badge-border);
+  color: var(--purple);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  animation: badgePulse 2.2s ease-in-out infinite;
+  box-shadow: 0 0 12px var(--badge-glow);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.screenshot-badge.hidden {
+  display: none;
+}
+
+.screenshot-badge svg {
+  flex-shrink: 0;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
+    border-color: rgba(139, 92, 246, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.55), 0 0 40px rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.65);
+  }
+}
+
+/* ── Text Input ── */
+
+.input-field {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  caret-color: var(--purple);
+}
+
+.input-field::placeholder {
+  color: var(--text-placeholder);
+  font-weight: 400;
+  transition: color 0.3s ease;
+}
+
+.input-field:focus::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.input-field::selection {
+  background: rgba(139, 92, 246, 0.35);
+  color: #fff;
+}
+
+/* ── Enter Hint ── */
+
+.enter-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.enter-hint.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.enter-hint kbd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: var(--enter-bg);
+  border: 1px solid var(--enter-border);
+  color: var(--enter-text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.input-wrapper.has-text .enter-hint kbd {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: rgba(167, 139, 250, 0.8);
+}
+
+/* ── Dismiss animation ── */
+
+.input-wrapper.dismissing {
+  animation: dismissOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes dismissOut {
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+}
+
+/* ── Subtle inner shimmer on hover ── */
+
+.input-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.02),
+    transparent
+  );
+  transition: none;
+  pointer-events: none;
+}
+
+.input-container:hover::after {
+  animation: shimmer 1.5s ease forwards;
+}
+
+@keyframes shimmer {
+  to { left: 150%; }
+}

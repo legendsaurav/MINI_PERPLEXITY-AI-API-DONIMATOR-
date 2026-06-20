@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Copilot Input</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="input.css" />
+</head>
+<body>
+  <div class="input-wrapper" id="inputWrapper">
+    <!-- Animated gradient border -->
+    <div class="gradient-border"></div>
+
+    <div class="input-container">
+      <!-- AI Sparkle Icon -->
+      <div class="icon-sparkle" id="sparkleIcon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="sparkleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#a78bfa">
+                <animate attributeName="stop-color" values="#a78bfa;#60a5fa;#22d3ee;#a78bfa" dur="3s" repeatCount="indefinite" />
+              </stop>
+              <stop offset="50%" stop-color="#60a5fa">
+                <animate attributeName="stop-color" values="#60a5fa;#22d3ee;#a78bfa;#60a5fa" dur="3s" repeatCount="indefinite" />
+              </stop>
+              <stop offset="100%" stop-color="#22d3ee">
+                <animate attributeName="stop-color" values="#22d3ee;#a78bfa;#60a5fa;#22d3ee" dur="3s" repeatCount="indefinite" />
+              </stop>
+            </linearGradient>
+          </defs>
+          <path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"
+                fill="url(#sparkleGrad)" />
+        </svg>
+      </div>
+
+      <!-- Screenshot Badge -->
+      <div class="screenshot-badge hidden" id="screenshotBadge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="12" cy="13" r="4"
+                  stroke="currentColor" stroke-width="2" fill="none"/>
+        </svg>
+        <span>Screenshot</span>
+      </div>
+
+      <!-- Text Input -->
+      <input
+        type="text"
+        id="inputField"
+        class="input-field"
+        placeholder="Ask anything…"
+        spellcheck="false"
+        autocomplete="off"
+      />
+
+      <!-- Enter Hint -->
+      <div class="enter-hint" id="enterHint">
+        <kbd>↵</kbd>
+      </div>
+    </div>
+  </div>
+
+  <script src="input.js"></script>
+</body>
+</html>

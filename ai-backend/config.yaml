@@ -1,0 +1,33 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  dbname: "ai_backend"
+  sslmode: "disable"
+
+browser:
+  max_running: 3
+  idle_timeout_secs: 300
+  profile_base_path: "./data/browser_profiles"
+
+auth:
+  api_key_prefix: "sk-"
+
+providers:
+  chatgpt:
+    base_url: "https://chatgpt.com"
+    login_url: "https://chatgpt.com/auth/login"
+    startup_timeout_secs: 30
+  gemini:
+    base_url: "https://gemini.google.com/app"
+    login_url: "https://accounts.google.com"
+    startup_timeout_secs: 30
+  claude:
+    base_url: "https://claude.ai"
+    login_url: "https://claude.ai/login"
+    startup_timeout_secs: 30

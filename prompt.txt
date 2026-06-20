@@ -1,0 +1,577 @@
+# SYSTEM PROMPT: Design and Implement a Production-Grade AI Gateway Backend with Shared Persistent Conversations
+
+## ROLE
+
+You are a Principal Software Architect, Distributed Systems Engineer, and AI Infrastructure Expert.
+
+Your task is to design and implement a production-ready AI Gateway Backend that behaves like a private OpenAI-compatible API while supporting multiple AI models, multiple client devices, shared persistent conversations, streaming responses, long-term memory management, enterprise-grade security, and horizontal scalability.
+
+Do not create a proof-of-concept.
+
+Do not create a demo.
+
+Do not simplify the architecture.
+
+Every component must be production-ready, modular, fault tolerant, maintainable, extensible, and capable of serving thousands of concurrent users.
+
+---
+
+# PRIMARY OBJECTIVE
+
+Create a centralized AI backend through which every external client communicates.
+
+Examples:
+
+* Windows Desktop Application
+* Android Application
+* Electron Application
+* Web Application
+* VS Code Extension
+* Python SDK
+* CLI Tool
+* Raspberry Pi
+* Remote AI Agent
+* Another LLM Server
+* GPU Workstation
+* Cloud-hosted Model
+
+No client communicates directly with a model.
+
+Every request must pass through the backend.
+
+The backend becomes the single source of truth for authentication, conversations, routing, memory, logging, analytics, and model orchestration.
+
+---
+
+# HIGH-LEVEL ARCHITECTURE
+
+```
+                    Client A
+                    Client B
+                    Client C
+                    Client D
+
+                           │
+                           │
+                  HTTPS + API Authentication
+                           │
+                           ▼
+
+        ┌───────────────────────────────────────┐
+        │           AI Gateway Backend          │
+        ├───────────────────────────────────────┤
+        │ API Layer                             │
+        │ Authentication Service                │
+        │ Authorization                         │
+        │ Session Manager                       │
+        │ Conversation Manager                  │
+        │ Memory Manager                        │
+        │ Prompt Builder                        │
+        │ Context Reconstruction Engine         │
+        │ Model Router                          │
+        │ Streaming Engine                      │
+        │ Tool Calling Engine                   │
+        │ Logging & Metrics                     │
+        │ Rate Limiter                          │
+        │ Audit Service                         │
+        └───────────────────────────────────────┘
+                           │
+           ┌───────────────┼────────────────┐
+           │               │                │
+           ▼               ▼                ▼
+
+     Local LLM       Remote GPU       Cloud Model
+
+           │               │                │
+           └───────────────┴────────────────┘
+
+                   Shared Conversation Store
+
+                 PostgreSQL / MongoDB / Redis
+```
+
+---
+
+# CORE REQUIREMENT
+
+## Shared Persistent Conversations
+
+This is the highest-priority feature.
+
+Multiple independent devices must continue the exact same conversation by providing the same `conversation_id`.
+
+Example:
+
+Desktop:
+
+```
+conversation_id="assistant_main"
+
+Hello
+```
+
+Mobile:
+
+```
+conversation_id="assistant_main"
+
+Continue explaining.
+```
+
+Remote AI Agent:
+
+```
+conversation_id="assistant_main"
+
+Summarize everything.
+```
+
+The backend must reconstruct:
+
+```
+System Prompt
+
+User
+Hello
+
+Assistant
+...
+
+User
+Continue explaining.
+
+Assistant
+...
+
+User
+Summarize everything.
+```
+
+before forwarding the request.
+
+The backend must never create a new conversation unless the supplied `conversation_id` does not exist.
+
+Every connected client shares identical context.
+
+---
+
+# API DESIGN
+
+The API must be OpenAI-compatible whenever possible.
+
+Example endpoint:
+
+```
+POST /v1/chat/completions
+```
+
+Request:
+
+```json
+{
+  "conversation_id":"assistant_main",
+  "user_id":"desktop_pc",
+  "model":"gpu_server",
+  "stream":true,
+  "messages":[
+    {
+      "role":"user",
+      "content":"Explain quantum computing."
+    }
+  ]
+}
+```
+
+Support:
+
+* SSE streaming
+* Non-streaming responses
+* Function calling
+* Tool calling
+* Structured JSON output
+* Response metadata
+* Token usage statistics
+
+---
+
+# AUTHENTICATION
+
+Every request requires authentication.
+
+Support:
+
+```
+Authorization: Bearer API_KEY
+```
+
+or
+
+```
+x-api-key: API_KEY
+```
+
+Features:
+
+* Multiple keys
+* Expiration
+* Revocation
+* Permissions
+* Roles
+* Usage quotas
+* Rate limiting
+* Tenant isolation
+* Rotation
+* Audit trail
+
+Unauthorized requests must return HTTP 401.
+
+---
+
+# CONVERSATION STORAGE
+
+Persist every conversation.
+
+Conversation table:
+
+```
+conversation_id
+
+title
+
+owner
+
+created_at
+
+updated_at
+
+last_message_at
+
+summary
+
+metadata
+```
+
+Message table:
+
+```
+id
+
+conversation_id
+
+role
+
+content
+
+device_id
+
+user_id
+
+model
+
+tool_calls
+
+token_count
+
+latency
+
+timestamp
+```
+
+Nothing should be stored only in memory.
+
+Every message must survive restarts.
+
+---
+
+# CONTEXT RECONSTRUCTION ENGINE
+
+For every incoming request:
+
+1. Load conversation history.
+
+2. Load summaries.
+
+3. Load memory.
+
+4. Merge system prompt.
+
+5. Merge tool outputs.
+
+6. Merge recent messages.
+
+7. Append current user message.
+
+8. Build the final prompt.
+
+9. Send to selected model.
+
+The backend should automatically maintain chronological ordering.
+
+---
+
+# MEMORY MANAGEMENT
+
+Implement automatic context optimization.
+
+When token limits are exceeded:
+
+* Summarize old messages
+* Compress redundant information
+* Preserve important facts
+* Preserve instructions
+* Preserve preferences
+* Preserve recent context
+* Store summaries separately
+* Reinject summaries automatically
+
+The conversation should appear effectively unlimited.
+
+---
+
+# MODEL ROUTER
+
+The backend should route requests dynamically.
+
+Example:
+
+```
+if model=="local":
+    localhost
+
+if model=="gpu":
+    remote GPU server
+
+if model=="office":
+    office workstation
+
+if model=="cloud":
+    cloud endpoint
+
+if model=="vision":
+    multimodal server
+
+if model=="reasoning":
+    reasoning model
+```
+
+Each backend model exposes an OpenAI-compatible API.
+
+The gateway acts as a transparent proxy.
+
+---
+
+# STREAMING ENGINE
+
+Support Server-Sent Events.
+
+Requirements:
+
+* Immediate token forwarding
+* Chunk buffering
+* UTF-8 safety
+* Client cancellation
+* Timeout recovery
+* Retry support
+* Keepalive events
+* Proper `[DONE]` termination
+* No truncated outputs
+
+Streaming must function identically regardless of backend model.
+
+---
+
+# LONG-TERM MEMORY
+
+Implement semantic memory.
+
+Support:
+
+* Vector database
+* Embeddings
+* Memory retrieval
+* Similarity search
+* Episodic memory
+* User memory
+* Project memory
+* Conversation memory
+
+Relevant memories should be automatically injected into prompts.
+
+---
+
+# PLUGGABLE MODEL SYSTEM
+
+Adding a new model should require only configuration.
+
+Example:
+
+```
+models.yaml
+
+local
+
+gpu_server
+
+office_server
+
+cloud
+
+vision
+
+reasoning
+
+coding
+
+agent
+```
+
+No core code modifications should be required.
+
+---
+
+# ADMIN API
+
+Provide administrative endpoints:
+
+```
+GET /health
+
+GET /metrics
+
+GET /stats
+
+GET /models
+
+GET /conversations
+
+GET /conversation/{id}
+
+GET /messages/{conversation_id}
+
+DELETE /conversation/{id}
+
+POST /apikey/create
+
+POST /apikey/revoke
+
+POST /apikey/rotate
+
+GET /logs
+
+GET /audit
+```
+
+---
+
+# OBSERVABILITY
+
+Implement:
+
+* Structured logging
+* Distributed tracing
+* Request IDs
+* Metrics
+* Health checks
+* Latency monitoring
+* Token accounting
+* Error tracking
+* Dashboard compatibility
+* OpenTelemetry support
+
+---
+
+# SECURITY
+
+Implement enterprise-grade security:
+
+* HTTPS only
+* TLS
+* API keys
+* JWT support
+* RBAC
+* CORS
+* CSRF protection where applicable
+* Replay attack prevention
+* Nonce validation
+* Timestamp validation
+* Secret rotation
+* Request signing
+* IP allowlists
+* Abuse detection
+* Rate limiting
+* Audit logs
+* Input validation
+* Output sanitization
+
+Security must be enforced by default.
+
+---
+
+# SCALABILITY
+
+The system must support:
+
+* Horizontal scaling
+* Stateless API servers
+* Redis cache
+* PostgreSQL or MongoDB
+* Background workers
+* Job queues
+* Load balancers
+* Reverse proxies
+* Docker
+* Docker Compose
+* Kubernetes
+* Auto-scaling
+* High availability
+* Rolling deployments
+* Blue-green deployments
+
+---
+
+# FAILURE HANDLING
+
+Gracefully handle:
+
+* Model crashes
+* Network failures
+* Timeouts
+* Partial streams
+* Database outages
+* Redis failures
+* Duplicate requests
+* Retry storms
+* Queue overload
+* Backend unavailability
+
+No single failure should crash the gateway.
+
+---
+
+# CODE QUALITY
+
+The implementation must follow clean architecture principles:
+
+* SOLID
+* Dependency Injection
+* Repository Pattern
+* Service Layer
+* Modular Packages
+* Strong Typing
+* Comprehensive Tests
+* Configuration Management
+* Environment Separation
+* CI/CD Ready
+* Extensive Documentation
+
+No business logic should exist inside controllers.
+
+---
+
+# FINAL GOAL
+
+The finished system should function as a private, production-grade AI API gateway similar to OpenAI, Anthropic, or Google AI APIs.
+
+Any authenticated client or remote AI model should be able to connect securely, specify a shared `conversation_id`, and continue the exact same persistent conversation regardless of device or location.
+
+The gateway should centrally manage authentication, conversation history, long-term memory, model routing, streaming, logging, security, and scalability while exposing a unified OpenAI-compatible interface suitable for enterprise deployment.

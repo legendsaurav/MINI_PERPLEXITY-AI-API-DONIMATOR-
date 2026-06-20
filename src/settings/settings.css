@@ -1,0 +1,82 @@
+:root {
+  --bg-dark: #121214;
+  --bg-card: #1c1c1f;
+  --text-main: #ffffff;
+  --text-muted: #a0a0ab;
+  --accent: #6b4cff;
+  --accent-hover: #7b5dff;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  margin: 0;
+  padding: 24px;
+}
+
+h2 {
+  margin-top: 0;
+  margin-bottom: 24px;
+  font-weight: 600;
+  font-size: 20px;
+}
+
+h3 {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.provider-selector {
+  display: flex;
+  gap: 16px;
+}
+
+.provider-selector label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.auth-status {
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.auth-status.authenticated {
+  color: #4ade80;
+}
+
+.auth-status.unauthenticated {
+  color: #f87171;
+}
+
+.btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn:hover {
+  background: var(--accent-hover);
+}

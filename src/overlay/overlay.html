@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Copilot</title>
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Highlight.js Theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css" />
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="overlay.css" />
+</head>
+<body>
+  <div id="overlay-root">
+    <!-- Animated border glow layer -->
+    <div class="border-glow"></div>
+
+    <!-- Main glass container -->
+    <div class="glass-container">
+
+      <!-- ═══ Header / Drag Region ═══ -->
+      <header id="drag-region">
+        <div class="header-left">
+          <div class="brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" fill="url(#gBrand1)" />
+              <path d="M2 17l10 5 10-5" stroke="url(#gBrand2)" stroke-width="2" fill="none" />
+              <path d="M2 12l10 5 10-5" stroke="url(#gBrand3)" stroke-width="2" fill="none" />
+              <defs>
+                <linearGradient id="gBrand1" x1="2" y1="2" x2="22" y2="12">
+                  <stop stop-color="#a78bfa" /><stop offset="1" stop-color="#22d3ee" />
+                </linearGradient>
+                <linearGradient id="gBrand2" x1="2" y1="17" x2="22" y2="22">
+                  <stop stop-color="#818cf8" /><stop offset="1" stop-color="#06b6d4" />
+                </linearGradient>
+                <linearGradient id="gBrand3" x1="2" y1="12" x2="22" y2="17">
+                  <stop stop-color="#a78bfa" /><stop offset="1" stop-color="#22d3ee" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span class="brand-name">mini perplexity</span>
+          <span class="status-badge" id="status-badge">
+            <span class="status-dot"></span>
+            <span class="status-text">Ready</span>
+          </span>
+        </div>
+        <div class="header-right">
+          <span class="project-badge" id="provider-badge" style="background: rgba(107, 76, 255, 0.15); color: #b4a0ff; border-color: rgba(107, 76, 255, 0.3);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 16a6 6 0 110-12 6 6 0 010 12z"/></svg>
+            <span id="provider-name">chatgpt</span>
+          </span>
+          <span class="project-badge" id="project-badge" style="display:none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            <span id="project-name"></span>
+          </span>
+          <button class="close-btn no-drag" id="close-btn" title="Hide overlay (Ctrl+Shift+O)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- ═══ Content Area ═══ -->
+      <main id="content-area">
+
+        <!-- Welcome State -->
+        <div class="state-view" id="welcome-state">
+          <div class="welcome-icon">
+            <div class="welcome-icon-glow"></div>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" fill="url(#gWelcome1)" opacity="0.9"/>
+              <path d="M2 17l10 5 10-5" stroke="url(#gWelcome2)" stroke-width="1.5" fill="none" opacity="0.7"/>
+              <path d="M2 12l10 5 10-5" stroke="url(#gWelcome3)" stroke-width="1.5" fill="none" opacity="0.8"/>
+              <defs>
+                <linearGradient id="gWelcome1" x1="2" y1="2" x2="22" y2="12">
+                  <stop stop-color="#a78bfa"/><stop offset="0.5" stop-color="#818cf8"/><stop offset="1" stop-color="#22d3ee"/>
+                </linearGradient>
+                <linearGradient id="gWelcome2" x1="2" y1="17" x2="22" y2="22">
+                  <stop stop-color="#818cf8"/><stop offset="1" stop-color="#06b6d4"/>
+                </linearGradient>
+                <linearGradient id="gWelcome3" x1="2" y1="12" x2="22" y2="17">
+                  <stop stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h2 class="welcome-title">AI Copilot</h2>
+          <p class="welcome-subtitle">Your intelligent desktop assistant</p>
+          <div class="shortcut-hints">
+            <div class="shortcut-row">
+              <kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>Shift</kbd><span class="kbd-plus">+</span><kbd>Q</kbd>
+              <span class="shortcut-label">Ask a question</span>
+            </div>
+            <div class="shortcut-row">
+              <kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>Shift</kbd><span class="kbd-plus">+</span><kbd>Space</kbd>
+              <span class="shortcut-label">Screenshot</span>
+            </div>
+            <div class="shortcut-row">
+              <kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>Shift</kbd><span class="kbd-plus">+</span><kbd>O</kbd>
+              <span class="shortcut-label">Toggle overlay</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading / Shimmer State -->
+        <div class="state-view hidden" id="loading-state">
+          <div class="shimmer-block" style="width:85%"></div>
+          <div class="shimmer-block" style="width:70%"></div>
+          <div class="shimmer-block" style="width:90%"></div>
+          <div class="shimmer-block short" style="width:55%"></div>
+        </div>
+
+        <!-- Response State (markdown renders here) -->
+        <div class="state-view hidden" id="response-state">
+          <div class="markdown-body" id="markdown-body"></div>
+          <div class="stream-cursor" id="stream-cursor"></div>
+        </div>
+
+        <!-- Error State -->
+        <div class="state-view hidden" id="error-state">
+          <div class="error-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <p class="error-title">Something went wrong</p>
+          <p class="error-message" id="error-message"></p>
+        </div>
+
+      </main>
+
+      <!-- ═══ Footer ═══ -->
+      <footer id="footer">
+        <div class="footer-shortcuts">
+          <span class="footer-hint"><kbd>Ctrl+Shift+Q</kbd> Ask</span>
+          <span class="footer-divider">·</span>
+          <span class="footer-hint"><kbd>Ctrl+Shift+Space</kbd> Screenshot</span>
+          <span class="footer-divider">·</span>
+          <span class="footer-hint"><kbd>Ctrl+Shift+O</kbd> Toggle</span>
+        </div>
+      </footer>
+
+    </div><!-- /.glass-container -->
+  </div><!-- /#overlay-root -->
+
+  <!-- Markdown + Syntax Highlighting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- App Script -->
+  <script src="overlay.js"></script>
+</body>
+</html>

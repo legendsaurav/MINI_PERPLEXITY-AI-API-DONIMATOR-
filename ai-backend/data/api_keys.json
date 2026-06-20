@@ -1,0 +1,28 @@
+{
+  "keys": [
+    {
+      "id": "b550e066-94ea-4429-9b08-c39e1c6d8a27",
+      "user_id": "0e07984e-67ec-4ad6-a46f-c27d990bc067",
+      "username": "proka",
+      "key_hash": "573e62882327ac6f52ffc430c8e594b67f310f69ecb04eb2c0a4860d38fa7461",
+      "workspace_id": "d11609ac-7ab7-4460-a3f5-c94efd9ec034",
+      "provider": "chatgpt",
+      "permissions": "full",
+      "status": "active",
+      "created_at": "2026-06-20T13:01:46Z",
+      "device_name": "laptop"
+    },
+    {
+      "id": "9fff0056-863d-48a1-938d-c39eff84a7dc",
+      "user_id": "0a0e4a63-ae98-4834-bc85-2f1784123603",
+      "username": "friend",
+      "key_hash": "c778b92f500e94bcb493d362d630caeaa893f199e02c8de346fdd17b562d7549",
+      "workspace_id": "3e3eb46f-377c-4697-b163-506a43eb5bee",
+      "provider": "chatgpt",
+      "permissions": "full",
+      "status": "active",
+      "created_at": "2026-06-20T13:01:47Z",
+      "device_name": "phone"
+    }
+  ]
+}
