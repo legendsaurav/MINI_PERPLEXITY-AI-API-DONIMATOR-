@@ -1,4 +1,4 @@
-# Desktop AI Copilot
+# Desktop AI (MINI PERPLEXITY)
 
 **Universal Desktop AI Copilot** is a powerful Electron-based assistant that bridges the gap between your desktop applications and your favorite AI providers (ChatGPT, Gemini, etc.). It provides a context-aware, persistent overlay that understands what you're working on without needing API keys.
 
