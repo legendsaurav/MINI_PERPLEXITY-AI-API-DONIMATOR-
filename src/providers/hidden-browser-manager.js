@@ -7,7 +7,7 @@ const capabilities = require('./provider-capabilities');
 // 🔍 DEBUG MODE - Set to true to make the hidden browser VISIBLE
 // so you can see what's happening (CloudFlare, CAPTCHA, login, etc.)
 // ============================================================
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 /**
  * Hidden Browser Manager

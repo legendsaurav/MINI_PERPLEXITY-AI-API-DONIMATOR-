@@ -290,8 +290,6 @@ async function runConnectionCheckpoints() {
     console.log('[Connection] ------------------------------------------------');
 
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.show();
-      stateManager.set('overlayVisibility', true);
       overlayWindow.webContents.send('stream-end', { fullText: fullResponse });
     }
 
