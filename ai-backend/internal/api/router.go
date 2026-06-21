@@ -23,6 +23,7 @@ type Dependencies struct {
 	ProviderRegistry *providers.Registry
 	FileAuth         *auth.FileAuthProvider // Used when DB is nil
 	Config           *config.Config
+	Verifier         *providers.Verifier
 }
 
 // NewRouter creates the chi router with all middleware and routes.

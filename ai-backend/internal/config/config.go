@@ -11,11 +11,13 @@ import (
 
 // ProviderConfig holds per-provider settings.
 type ProviderConfig struct {
-	BaseURL            string `yaml:"base_url"`
-	LoginURL           string `yaml:"login_url"`
-	StartupTimeoutSecs int    `yaml:"startup_timeout_secs"`
-	UploadTimeout      string `yaml:"upload_timeout"`
-	AnalysisTimeout    string `yaml:"analysis_timeout"`
+	BaseURL             string `yaml:"base_url"`
+	LoginURL            string `yaml:"login_url"`
+	StartupTimeoutSecs  int    `yaml:"startup_timeout_secs"`
+	UploadTimeout       string `yaml:"upload_timeout"`
+	AnalysisTimeout     string `yaml:"analysis_timeout"`
+	VerificationPrompt  string `yaml:"verification_prompt"`
+	VerificationRetries int    `yaml:"verification_retries"`
 }
 
 // UploadsConfig holds validation limits and paths for user uploads.

@@ -94,6 +94,10 @@ func main() {
 
 	slog.Info("Registered providers", "providers", registry.List())
 
+	// ── Initialize Startup Verification Manager ──────────────────────
+	verifier := providers.NewVerifier(sched, registry, cfg)
+	go verifier.StartVerification(context.Background())
+
 	// ── Build dependencies ──────────────────────────────────────────
 	deps := &api.Dependencies{
 		DB:               db,
@@ -101,6 +105,7 @@ func main() {
 		Scheduler:        sched,
 		ProviderRegistry: registry,
 		Config:           cfg,
+		Verifier:         verifier,
 	}
 
 	// ── File-based auth (standalone mode) ───────────────────────────

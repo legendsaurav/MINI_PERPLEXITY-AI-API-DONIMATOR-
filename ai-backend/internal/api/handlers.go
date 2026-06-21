@@ -359,13 +359,22 @@ func HandleHealth(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		stats := deps.Scheduler.Stats()
 
+		providersState := make(map[string]string)
+		if deps.Verifier != nil {
+			providersState = deps.Verifier.GetStates()
+		} else {
+			for _, name := range deps.ProviderRegistry.List() {
+				providersState[name] = "unknown"
+			}
+		}
+
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"status":           "healthy",
 			"running_browsers": stats.Total,
 			"busy_browsers":    stats.Busy,
 			"idle_browsers":    stats.Idle,
 			"browser_capacity": stats.Capacity,
-			"providers":        deps.ProviderRegistry.List(),
+			"providers":        providersState,
 		})
 	}
 }
