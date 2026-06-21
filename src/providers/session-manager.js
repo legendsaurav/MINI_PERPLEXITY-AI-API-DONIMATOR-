@@ -68,9 +68,17 @@ class SessionManager {
         }
       }
 
-      // Check for login indicators
+      // Check for login indicators in URL first
       let isAuthenticated = true;
-      if (provider === 'chatgpt') {
+      const urlLower = url.toLowerCase();
+      if (provider !== 'googlesearch' && (
+        urlLower.includes('/login') || 
+        urlLower.includes('/auth/login') || 
+        urlLower.includes('/signin') || 
+        urlLower.includes('/servicelogin')
+      )) {
+        isAuthenticated = false;
+      } else if (provider === 'chatgpt') {
         const hasLoginButton = await this.safeExecuteJavaScript(webContents, `
           !!document.querySelector('[data-testid="login-button"]') || !!document.querySelector('a[href*="/auth/login"]')
         `);
