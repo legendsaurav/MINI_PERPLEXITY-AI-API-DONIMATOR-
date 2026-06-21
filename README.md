@@ -92,6 +92,37 @@ If your computer does not contain any preloaded developer tools, follow these st
    npm start
    ```
 
+### ⚠️ Troubleshooting Electron Installation
+
+If you get this error during installation or startup:
+> `Error: Electron failed to install correctly, please delete node_modules/electron and try installing again`
+
+This is a common issue on Windows where npm skips or blocks the post-install download script for the precompiled Electron binary. You can easily fix it using one of the following methods:
+
+- **Method 1: Manually trigger the Electron downloader**:
+  ```bash
+  node node_modules/electron/install.js
+  ```
+- **Method 2: Force npm to rebuild Electron**:
+  ```bash
+  npm rebuild electron
+  ```
+- **Method 3: Re-install Electron directly**:
+  ```bash
+  npm install electron --save-dev
+  ```
+- **Method 4: Perform a clean install (Recommended for persistent issues)**:
+  Delete the cache, the dependencies folder, and the lock file, and reinstall:
+  ```bash
+  # Delete folders and files
+  rmdir /s /q node_modules
+  del package-lock.json
+  
+  # Clear npm cache and install
+  npm cache clean --force
+  npm install
+  ```
+
 ---
 
 ### 💡 First-Time Startup & Authentication
