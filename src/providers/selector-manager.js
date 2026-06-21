@@ -5,13 +5,13 @@
  */
 const SELECTORS = {
   chatgpt: {
-    textarea: '#prompt-textarea',
-    sendButton: '[data-testid="send-button"]',
-    stopButton: '[data-testid="stop-button"], button[aria-label="Stop generating"]',
-    responseArea: '[data-message-author-role="assistant"]',
-    sidebarChatList: 'nav[aria-label="Chat history"] a',
+    textarea: '#prompt-textarea, [data-testid="composer-input"], div.ProseMirror, textarea.wcDTda_fallbackTextarea',
+    sendButton: '[data-testid="send-button"], [data-testid="composer-submit-button"], button.composer-submit-btn, #composer-submit-button',
+    stopButton: '[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop"]',
+    responseArea: '[data-message-author-role="assistant"], div.agent-turn, div.markdown.prose',
+    sidebarChatList: 'nav[aria-label="Chat history"] a, [data-testid="history-item"]',
     chatTitle: 'div.relative.grow.overflow-hidden',
-    streamingIndicator: '[data-testid="stop-button"]'
+    streamingIndicator: '[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop"]'
   },
   gemini: {
     textarea: 'rich-textarea p',

@@ -182,7 +182,11 @@ class BrowserController {
             // Fallbacks for Kimi and other providers
             sendBtn = document.querySelector('button[type="submit"]') || 
                       document.querySelector('[class*="send"]') || 
-                      document.querySelector('button');
+                      Array.from(document.querySelectorAll('button')).find(b => {
+                        const cls = (b.className || '').toString().toLowerCase();
+                        const id = (b.id || '').toString().toLowerCase();
+                        return cls.includes('submit') || cls.includes('send') || id.includes('submit') || id.includes('send');
+                      });
           }
 
           // Check if button is actually disabled (checking class list as well since div doesn't support disabled property)
