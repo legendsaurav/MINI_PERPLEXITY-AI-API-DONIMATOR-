@@ -218,59 +218,60 @@ function createConversationPicker() {
 // ============================================================
 
 async function runConnectionCheckpoints() {
-  const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek'];
+  const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek', 'googlesearch'];
   const startProvider = stateManager.get('currentProvider') || 'chatgpt';
 
   console.log('');
   console.log('[Connection] ================================================');
-  console.log('[Connection] Starting multi-provider startup check...');
+  console.log('[Connection] Starting multi-provider sequential startup check...');
   console.log('[Connection] ================================================');
 
-  const promises = providers.map(async (provider) => {
-    try {
-      console.log(`[Connection] [${provider}] Initializing hidden browser...`);
-      const win = await hiddenBrowserManager.ensureWindow(provider);
-      
-      // Wait for page load
-      await sleep(3000);
-      
-      const isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
-      console.log(`[Connection] [${provider}] Auth status: ${isAuth}`);
+  const checkSequence = async () => {
+    for (const provider of providers) {
+      try {
+        console.log(`[Connection] [${provider}] Initializing hidden browser...`);
+        const win = await hiddenBrowserManager.ensureWindow(provider);
+        
+        // Wait for page load
+        await sleep(3000);
+        
+        const isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
+        console.log(`[Connection] [${provider}] Auth status: ${isAuth}`);
 
-      if (!isAuth) {
-        console.log(`[Connection] [${provider}] ⚠ User is NOT logged in. Showing login window...`);
-        hiddenBrowserManager.showForLogin(provider);
+        if (!isAuth) {
+          console.log(`[Connection] [${provider}] ⚠ User is NOT logged in. Showing login window...`);
+          hiddenBrowserManager.showForLogin(provider);
 
-        // Wait in the background for the user to login
-        const loggedIn = await waitForLogin(provider, win);
-        if (loggedIn) {
-          console.log(`[Connection] [${provider}] ✓ Logged in successfully! Hiding window.`);
-          hiddenBrowserManager.hideAfterLogin(provider);
-          
+          // Wait for the user to login (blocks processing the next provider until resolved)
+          const loggedIn = await waitForLogin(provider, win);
+          if (loggedIn) {
+            console.log(`[Connection] [${provider}] ✓ Logged in successfully! Hiding window.`);
+            hiddenBrowserManager.hideAfterLogin(provider);
+            
+            // If this is the current active provider, run the test message checkpoint
+            if (provider === startProvider) {
+              await runTestMessageCheckpoint(provider);
+            }
+          } else {
+            console.error(`[Connection] [${provider}] ✗ Login check timed out or cancelled.`);
+          }
+        } else {
+          console.log(`[Connection] [${provider}] ✓ Already logged in.`);
           // If this is the current active provider, run the test message checkpoint
           if (provider === startProvider) {
             await runTestMessageCheckpoint(provider);
           }
-        } else {
-          console.error(`[Connection] [${provider}] ✗ Login check timed out or cancelled.`);
         }
-      } else {
-        console.log(`[Connection] [${provider}] ✓ Already logged in.`);
-        // If this is the current active provider, run the test message checkpoint
-        if (provider === startProvider) {
-          await runTestMessageCheckpoint(provider);
-        }
+      } catch (error) {
+        console.error(`[Connection] [${provider}] Error during verification:`, error.message);
       }
-    } catch (error) {
-      console.error(`[Connection] [${provider}] Error during verification:`, error.message);
     }
-  });
-
-  // Let them run in the background concurrently. Do not block app initialization.
-  Promise.all(promises).then(() => {
-    console.log('[Connection] Multi-provider startup check complete.');
+    console.log('[Connection] Multi-provider sequential startup check complete.');
     console.log('[Connection] ================================================');
-  });
+  };
+
+  // Run sequentially in background so it does not block application window creation
+  checkSequence();
 
   return true;
 }
