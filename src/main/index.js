@@ -235,33 +235,47 @@ async function runConnectionCheckpoints(forceShow = false) {
         // Wait for page load
         await sleep(3000);
         
-        const isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
+        let isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
         console.log(`[Connection] [${provider}] Auth status: ${isAuth}`);
 
-        if (!isAuth || forceShow) {
-          console.log(`[Connection] [${provider}] Showing browser window (forceShow or not authenticated)...`);
+        if (!isAuth) {
+          console.log(`[Connection] [${provider}] ⚠ User is NOT logged in. Showing login window...`);
           hiddenBrowserManager.showForLogin(provider);
 
           // Wait for the user to login (blocks processing the next provider until resolved)
           const loggedIn = await waitForLogin(provider, win);
-          if (loggedIn) {
-            console.log(`[Connection] [${provider}] ✓ Logged in successfully! Hiding window.`);
-            hiddenBrowserManager.hideAfterLogin(provider);
-            
-            // If this is the current active provider, run the test message checkpoint
-            if (provider === startProvider) {
-              await runTestMessageCheckpoint(provider);
-            }
-          } else {
+          if (!loggedIn) {
             console.error(`[Connection] [${provider}] ✗ Login check timed out or cancelled.`);
+            continue;
           }
+          console.log(`[Connection] [${provider}] ✓ Logged in successfully!`);
         } else {
           console.log(`[Connection] [${provider}] ✓ Already logged in.`);
-          // If this is the current active provider, run the test message checkpoint
-          if (provider === startProvider) {
-            await runTestMessageCheckpoint(provider);
+          if (forceShow) {
+            hiddenBrowserManager.showForLogin(provider);
           }
         }
+
+        // Send the test message "hi" to verify the model is working and responding properly
+        console.log(`[Connection] [${provider}] Sending test message "hi"...`);
+        try {
+          const fullResponse = await sendTestMessage(provider, 'hi');
+          console.log(`[Connection] [${provider}] ✓ Test response received: "${fullResponse.substring(0, 45).replace(/\n/g, ' ')}..."`);
+          
+          if (overlayWindow && !overlayWindow.isDestroyed() && provider === startProvider) {
+            overlayWindow.webContents.send('stream-end', { fullText: fullResponse });
+          }
+
+          console.log(`[Connection] [${provider}] ✓ Provider verified successfully!`);
+          
+          // Successfully logged in & verified -> hide the window
+          hiddenBrowserManager.hideAfterLogin(provider);
+        } catch (verifyError) {
+          console.warn(`[Connection] [${provider}] ⚠ Verification failed:`, verifyError.message);
+          // Keep/show the window so the user can see what's wrong (e.g. CAPTCHA, browser suspended, etc.)
+          hiddenBrowserManager.showForLogin(provider);
+        }
+
       } catch (error) {
         console.error(`[Connection] [${provider}] Error during verification:`, error.message);
       }
@@ -275,7 +289,7 @@ async function runConnectionCheckpoints(forceShow = false) {
       if (Notification.isSupported()) {
         new Notification({
           title: 'Universal AI Copilot',
-          body: 'Active and running in the tray. Press Ctrl+Shift+O to open.',
+          body: 'All providers verified. Copilot is ready! Press Ctrl+Shift+O to open.',
           silent: true
         }).show();
       }
@@ -288,19 +302,6 @@ async function runConnectionCheckpoints(forceShow = false) {
   checkSequence();
 
   return true;
-}
-
-async function runTestMessageCheckpoint(provider) {
-  console.log(`[Connection] [${provider}] Sending test message "hi"...`);
-  try {
-    const fullResponse = await sendTestMessage(provider, 'hi');
-    console.log(`[Connection] [${provider}] ✓ Test response received.`);
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send('stream-end', { fullText: fullResponse });
-    }
-  } catch (error) {
-    console.warn(`[Connection] [${provider}] ⚠ Test message failed:`, error.message);
-  }
 }
 
 async function waitForLogin(provider, win) {
