@@ -166,7 +166,7 @@ function createTray() {
     { label: 'New Project', click: () => { eventBus.emit('newProjectRequested'); } },
     { type: 'separator' },
     { label: 'Toggle Overlay', click: () => { eventBus.emit('toggleOverlayRequested'); } },
-    { label: 'Re-Login', click: () => { runConnectionCheckpoints(); } },
+    { label: 'Re-Login', click: () => { runConnectionCheckpoints(true); } },
     { type: 'separator' },
     { label: 'Quit', click: () => { app.quit(); } }
   ]);
@@ -217,13 +217,13 @@ function createConversationPicker() {
 // 3-CHECKPOINT CONNECTION FLOW
 // ============================================================
 
-async function runConnectionCheckpoints() {
+async function runConnectionCheckpoints(forceShow = false) {
   const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek', 'googlesearch'];
   const startProvider = stateManager.get('currentProvider') || 'chatgpt';
 
   console.log('');
   console.log('[Connection] ================================================');
-  console.log('[Connection] Starting multi-provider sequential startup check...');
+  console.log(`[Connection] Starting multi-provider sequential startup check (forceShow: ${forceShow})...`);
   console.log('[Connection] ================================================');
 
   const checkSequence = async () => {
@@ -238,8 +238,8 @@ async function runConnectionCheckpoints() {
         const isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
         console.log(`[Connection] [${provider}] Auth status: ${isAuth}`);
 
-        if (!isAuth) {
-          console.log(`[Connection] [${provider}] ⚠ User is NOT logged in. Showing login window...`);
+        if (!isAuth || forceShow) {
+          console.log(`[Connection] [${provider}] Showing browser window (forceShow or not authenticated)...`);
           hiddenBrowserManager.showForLogin(provider);
 
           // Wait for the user to login (blocks processing the next provider until resolved)
@@ -268,6 +268,20 @@ async function runConnectionCheckpoints() {
     }
     console.log('[Connection] Multi-provider sequential startup check complete.');
     console.log('[Connection] ================================================');
+
+    // Show a desktop notification to inform the user the Copilot is ready
+    try {
+      const { Notification } = require('electron');
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'Universal AI Copilot',
+          body: 'Active and running in the tray. Press Ctrl+Shift+O to open.',
+          silent: true
+        }).show();
+      }
+    } catch (err) {
+      // Ignore
+    }
   };
 
   // Run sequentially in background so it does not block application window creation
