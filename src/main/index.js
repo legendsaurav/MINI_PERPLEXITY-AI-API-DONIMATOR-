@@ -218,97 +218,74 @@ function createConversationPicker() {
 // ============================================================
 
 async function runConnectionCheckpoints() {
-  const provider = stateManager.get('currentProvider') || 'chatgpt';
+  const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek'];
+  const startProvider = stateManager.get('currentProvider') || 'chatgpt';
 
   console.log('');
   console.log('[Connection] ================================================');
-  console.log(`[Connection] Starting 3-checkpoint verification for: ${provider}`);
+  console.log('[Connection] Starting multi-provider startup check...');
   console.log('[Connection] ================================================');
 
-  // ---- CHECKPOINT 1: Reach AI Model ----
-  console.log('[Connection] CHECKPOINT 1: Reaching AI model...');
-  let win;
-  try {
-    win = await hiddenBrowserManager.ensureWindow(provider);
-    console.log('[Connection] ✓ CHECKPOINT 1 PASSED: Hidden browser created');
-    
-    await sleep(5000);
-
-    const currentUrl = win.webContents.getURL();
-    const pageTitle = win.webContents.getTitle();
-    console.log(`[Connection] ✓ CHECKPOINT 1 COMPLETE: Page loaded at ${currentUrl}`);
-    console.log(`[Connection]   Page title: "${pageTitle}"`);
-
-  } catch (error) {
-    console.error('[Connection] ✗ CHECKPOINT 1 FAILED:', error.message);
-    console.error('[Connection] Cannot reach AI model. Check your internet connection.');
-    console.log('[Connection] 💡 TIP: Look at the DEBUG browser window to see what happened!');
-    console.log('[Connection] ================================================');
-    return false;
-  }
-
-  // ---- CHECKPOINT 2: Authentication ----
-  console.log('[Connection] CHECKPOINT 2: Checking authentication...');
-  
-  await sleep(2000);
-  
-  let isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
-  console.log(`[Connection] Auth check result: ${isAuth}`);
-
-  if (!isAuth) {
-    console.log('[Connection] ⚠ User is NOT logged in.');
-    console.log('[Connection] Opening browser window for manual login...');
-
-    hiddenBrowserManager.showForLogin(provider);
-
-    isAuth = await waitForLogin(provider, win);
-
-    if (isAuth) {
-      console.log('[Connection] ✓ CHECKPOINT 2 PASSED: User logged in successfully!');
-      hiddenBrowserManager.hideAfterLogin(provider);
+  const promises = providers.map(async (provider) => {
+    try {
+      console.log(`[Connection] [${provider}] Initializing hidden browser...`);
+      const win = await hiddenBrowserManager.ensureWindow(provider);
+      
+      // Wait for page load
       await sleep(3000);
-    } else {
-      console.error('[Connection] ✗ CHECKPOINT 2 FAILED: Login was not completed within timeout.');
-      console.log('[Connection] 💡 TIP: You can try again from the tray menu → Re-Login');
-      console.log('[Connection] ================================================');
-      return false;
+      
+      const isAuth = await sessionManager.checkAuthStatus(provider, win.webContents);
+      console.log(`[Connection] [${provider}] Auth status: ${isAuth}`);
+
+      if (!isAuth) {
+        console.log(`[Connection] [${provider}] ⚠ User is NOT logged in. Showing login window...`);
+        hiddenBrowserManager.showForLogin(provider);
+
+        // Wait in the background for the user to login
+        const loggedIn = await waitForLogin(provider, win);
+        if (loggedIn) {
+          console.log(`[Connection] [${provider}] ✓ Logged in successfully! Hiding window.`);
+          hiddenBrowserManager.hideAfterLogin(provider);
+          
+          // If this is the current active provider, run the test message checkpoint
+          if (provider === startProvider) {
+            await runTestMessageCheckpoint(provider);
+          }
+        } else {
+          console.error(`[Connection] [${provider}] ✗ Login check timed out or cancelled.`);
+        }
+      } else {
+        console.log(`[Connection] [${provider}] ✓ Already logged in.`);
+        // If this is the current active provider, run the test message checkpoint
+        if (provider === startProvider) {
+          await runTestMessageCheckpoint(provider);
+        }
+      }
+    } catch (error) {
+      console.error(`[Connection] [${provider}] Error during verification:`, error.message);
     }
-  } else {
-    console.log('[Connection] ✓ CHECKPOINT 2 PASSED: User is already logged in!');
-  }
+  });
 
-  // ---- CHECKPOINT 3: Send test message and display response ----
-  console.log('[Connection] CHECKPOINT 3: Sending test message "hi"...');
+  // Let them run in the background concurrently. Do not block app initialization.
+  Promise.all(promises).then(() => {
+    console.log('[Connection] Multi-provider startup check complete.');
+    console.log('[Connection] ================================================');
+  });
 
+  return true;
+}
+
+async function runTestMessageCheckpoint(provider) {
+  console.log(`[Connection] [${provider}] Sending test message "hi"...`);
   try {
     const fullResponse = await sendTestMessage(provider, 'hi');
-
-    console.log('[Connection] ✓ CHECKPOINT 3 PASSED: Response received!');
-    console.log('[Connection] ------------------------------------------------');
-    console.log('[Connection] AI Response:');
-    console.log(fullResponse);
-    console.log('[Connection] ------------------------------------------------');
-
+    console.log(`[Connection] [${provider}] ✓ Test response received.`);
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('stream-end', { fullText: fullResponse });
     }
-
-    console.log('[Connection] ✓ Response displayed in overlay window.');
-
   } catch (error) {
-    console.error('[Connection] ✗ CHECKPOINT 3 FAILED:', error.message);
-    console.log('[Connection] Could not send/receive test message.');
-    console.log('[Connection] 💡 The pipeline is still set up — shortcuts should work once the page is ready.');
-    console.log('[Connection] ================================================');
-    return false;
+    console.warn(`[Connection] [${provider}] ⚠ Test message failed:`, error.message);
   }
-
-  console.log('[Connection] ================================================');
-  console.log('[Connection] ✓✓✓ ALL 3 CHECKPOINTS PASSED ✓✓✓');
-  console.log('[Connection] The AI Copilot is fully connected and ready.');
-  console.log('[Connection] ================================================');
-  console.log('');
-  return true;
 }
 
 async function waitForLogin(provider, win) {
@@ -460,21 +437,29 @@ function setupAIPipeline() {
       
       console.log('[Pipeline] Building context...');
       const contextObject = await contextEngine.buildContext(question);
-      console.log('[Pipeline] Context built. Sending to AI...');
+      console.log('[Pipeline] Context built. Checking auth status...');
       
       const win = hiddenBrowserManager.getWindow(currentProvider);
       if (!win || win.isDestroyed()) {
         throw new Error(`Hidden browser window not available for ${currentProvider}. Please use tray menu → Re-Login.`);
       }
+
+      const sessionManager = require('../providers/session-manager');
+      let isAuth = await sessionManager.checkAuthStatus(currentProvider, win.webContents);
       
-      const currentUrl = win.webContents.getURL();
-      const caps = providerCapabilities.getCapabilities(currentProvider);
-      if (caps) {
-        const allowedDomains = caps.domains || [];
-        const isCorrectDomain = allowedDomains.some(d => currentUrl.includes(d));
-        if (!isCorrectDomain) {
-          const capitalized = currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1);
-          throw new Error(`Browser is not on ${capitalized}. Please log in first via tray menu → Re-Login.`);
+      if (!isAuth) {
+        console.log(`[Pipeline] User is NOT logged into ${currentProvider}. Showing login window...`);
+        hiddenBrowserManager.showForLogin(currentProvider);
+        
+        // Wait for user to log in
+        isAuth = await waitForLogin(currentProvider, win);
+        
+        if (isAuth) {
+          console.log(`[Pipeline] Successfully logged into ${currentProvider}. Hiding window and continuing...`);
+          hiddenBrowserManager.hideAfterLogin(currentProvider);
+          await sleep(2000); // Wait for page stability
+        } else {
+          throw new Error(`Please log in first. The login page for ${currentProvider} has been opened.`);
         }
       }
 

@@ -10,7 +10,7 @@ const capabilities = require('./provider-capabilities');
 class SessionManager {
   constructor() {
     this.authStates = new Map(); // provider -> boolean
-    this.isCheckingAuth = false;
+    this.checkingProviders = new Set(); // providers currently checking auth
   }
 
   /**
@@ -38,12 +38,12 @@ class SessionManager {
    * @returns {Promise<boolean>}
    */
   async checkAuthStatus(provider, webContents) {
-    if (this.isCheckingAuth) {
+    if (this.checkingProviders.has(provider)) {
       console.log(`[SessionManager] checkAuthStatus already in progress for ${provider}, skipping concurrent check.`);
       return this.isAuthenticated(provider);
     }
     
-    this.isCheckingAuth = true;
+    this.checkingProviders.add(provider);
     try {
       const url = webContents.getURL();
       if (!url || url === 'about:blank') {
@@ -110,7 +110,7 @@ class SessionManager {
       console.error(`Error checking auth status for ${provider}:`, error);
       return false;
     } finally {
-      this.isCheckingAuth = false;
+      this.checkingProviders.delete(provider);
     }
   }
 
