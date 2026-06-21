@@ -7,7 +7,7 @@ const capabilities = require('./provider-capabilities');
 // 🔍 DEBUG MODE - Set to true to make the hidden browser VISIBLE
 // so you can see what's happening (CloudFlare, CAPTCHA, login, etc.)
 // ============================================================
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 /**
  * Hidden Browser Manager
@@ -67,6 +67,82 @@ class HiddenBrowserManager {
     });
     win.webContents.on('did-navigate-in-page', (event, url) => {
       console.log(`[DEBUG] 🌐 In-page navigation: ${url}`);
+      const intervalId = setInterval(async () => {
+        if (win.isDestroyed()) {
+          clearInterval(intervalId);
+          return;
+        }
+        try {
+          const info = await win.webContents.executeJavaScript(`
+            (function() {
+              try {
+                const buttons = Array.from(document.querySelectorAll('button')).map(b => ({
+                  text: b.innerText ? b.innerText.substring(0, 30) : '',
+                  className: b.className,
+                  type: b.getAttribute('type'),
+                  id: b.id,
+                  disabled: b.disabled
+                }));
+                const textareas = Array.from(document.querySelectorAll('textarea, div[contenteditable="true"]')).map(t => ({
+                  tagName: t.tagName,
+                  className: t.className,
+                  placeholder: t.placeholder || t.getAttribute('placeholder'),
+                  value: (t.value || t.innerText || '').substring(0, 50)
+                }));
+                const editor = document.querySelector('.chat-input-editor');
+                const grandparentHtml = editor && editor.parentElement && editor.parentElement.parentElement ? editor.parentElement.parentElement.outerHTML.substring(0, 1500) : 'not found';
+                
+                // Find all elements whose class includes message, chat, or content
+                const classMatches = [];
+                document.querySelectorAll('*').forEach(el => {
+                  const cls = el.className;
+                  if (cls && typeof cls === 'string' && (cls.includes('message') || cls.includes('chat') || cls.includes('content') || cls.includes('btn') || cls.includes('send'))) {
+                    classMatches.push({
+                      tag: el.tagName,
+                      class: cls,
+                      text: el.innerText ? el.innerText.substring(0, 30).replace(/\\n/g, ' ') : ''
+                    });
+                  }
+                });
+
+                // Find elements containing "hi" or other text to locate message bubbles
+                const textMatches = [];
+                document.querySelectorAll('*').forEach(el => {
+                  if (el.children.length === 0 && el.innerText && el.innerText.trim().length > 0) {
+                    const text = el.innerText.trim();
+                    if (text === 'hi' || text.toLowerCase().includes('hello') || text.includes('Kimi')) {
+                      textMatches.push({
+                        tag: el.tagName,
+                        class: el.className,
+                        text: text.substring(0, 40),
+                        parentTag: el.parentElement ? el.parentElement.tagName : '',
+                        parentClass: el.parentElement ? el.parentElement.className : ''
+                      });
+                    }
+                  }
+                });
+
+                const bodyText = document.body ? document.body.innerText.substring(0, 200) : '';
+                return { 
+                  url: window.location.href, 
+                  buttons, 
+                  textareas, 
+                  grandparentHtml, 
+                  bodyTextLength: bodyText.length,
+                  classMatches: classMatches.slice(0, 30), // limit size
+                  textMatches: textMatches.slice(0, 30)
+                };
+              } catch (err) {
+                return { error: err.message };
+              }
+            })()
+          `);
+          console.log('[DOM INFO] ' + JSON.stringify(info));
+        } catch (e) {
+          // ignore
+        }
+      }, 5000);
+      setTimeout(() => clearInterval(intervalId), 30000);
     });
     win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       console.error(`[DEBUG] ❌ Failed to load: ${validatedURL} | Error: ${errorCode} ${errorDescription}`);
@@ -74,9 +150,27 @@ class HiddenBrowserManager {
     win.webContents.on('did-finish-load', () => {
       console.log(`[DEBUG] ✅ Page finished loading: ${win.webContents.getURL()}`);
     });
+    win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      console.log(`[BROWSER CONSOLE] ${message}`);
+    });
 
     console.log(`[DEBUG] 🚀 Loading URL: ${caps.baseUrl}`);
-    await win.loadURL(caps.baseUrl);
+    win.loadURL(caps.baseUrl).catch(err => {
+      console.warn(`[HiddenBrowser] loadURL promise warning:`, err.message);
+    });
+    
+    await new Promise((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+      win.webContents.once('did-finish-load', done);
+      win.webContents.once('dom-ready', done);
+      setTimeout(done, 15000); // 15s fallback timeout
+    });
     return win;
   }
 

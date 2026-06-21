@@ -10,6 +10,25 @@ const capabilities = require('./provider-capabilities');
 class SessionManager {
   constructor() {
     this.authStates = new Map(); // provider -> boolean
+    this.isCheckingAuth = false;
+  }
+
+  /**
+   * Checks if the user is currently authenticated with a provider
+   * @param {string} provider 
+   * @param {Electron.WebContents} webContents 
+   * @returns {Promise<boolean>}
+   */
+  async safeExecuteJavaScript(webContents, code, timeoutMs = 4000) {
+    try {
+      return await Promise.race([
+        webContents.executeJavaScript(code),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('executeJavaScript timeout')), timeoutMs))
+      ]);
+    } catch (err) {
+      console.warn(`[SessionManager] safeExecuteJavaScript warning: ${err.message}`);
+      return null;
+    }
   }
 
   /**
@@ -19,45 +38,70 @@ class SessionManager {
    * @returns {Promise<boolean>}
    */
   async checkAuthStatus(provider, webContents) {
+    if (this.isCheckingAuth) {
+      console.log(`[SessionManager] checkAuthStatus already in progress for ${provider}, skipping concurrent check.`);
+      return this.isAuthenticated(provider);
+    }
+    
+    this.isCheckingAuth = true;
     try {
       const url = webContents.getURL();
+      if (!url || url === 'about:blank') {
+        console.log(`[SessionManager] URL is empty or blank, skipping auth check.`);
+        return false;
+      }
       const caps = capabilities.getCapabilities(provider);
       
-      // CRITICAL FIX: First check if we're even on the correct domain.
-      // If the browser was redirected to Google OAuth or another external page,
-      // we are definitely NOT authenticated with the AI provider.
-      if (provider === 'chatgpt' && !url.includes('chatgpt.com')) {
-        console.log(`[SessionManager] Not on chatgpt.com (currently: ${new URL(url).hostname}). Not authenticated.`);
-        this.setAuthState(provider, false);
-        return false;
-      }
-      if (provider === 'gemini' && !url.includes('gemini.google.com')) {
-        console.log(`[SessionManager] Not on gemini.google.com (currently: ${new URL(url).hostname}). Not authenticated.`);
-        this.setAuthState(provider, false);
-        return false;
-      }
-      if (provider === 'claude' && !url.includes('claude.ai')) {
-        console.log(`[SessionManager] Not on claude.ai (currently: ${new URL(url).hostname}). Not authenticated.`);
-        this.setAuthState(provider, false);
-        return false;
+      if (caps) {
+        const allowedDomains = caps.domains || [];
+        const isCorrectDomain = allowedDomains.some(d => url.includes(d));
+        if (provider !== 'googlesearch' && !isCorrectDomain) {
+          let hostname = '';
+          try {
+            hostname = new URL(url).hostname;
+          } catch (e) {
+            hostname = url;
+          }
+          console.log(`[SessionManager] Not on allowed domains for ${provider} (currently: ${hostname}). Not authenticated.`);
+          this.setAuthState(provider, false);
+          return false;
+        }
       }
 
-      // Now we're on the correct domain — check for login buttons
+      // Check for login indicators
       let isAuthenticated = true;
       if (provider === 'chatgpt') {
-        // chatgpt redirects to login or shows login buttons if not auth'd
-        const hasLoginButton = await webContents.executeJavaScript(`
+        const hasLoginButton = await this.safeExecuteJavaScript(webContents, `
           !!document.querySelector('[data-testid="login-button"]') || !!document.querySelector('a[href*="/auth/login"]')
         `);
-        isAuthenticated = !hasLoginButton;
+        isAuthenticated = hasLoginButton === null ? true : !hasLoginButton;
       } else if (provider === 'gemini') {
-        const hasSignIn = await webContents.executeJavaScript(`
-          !!document.querySelector('a[href*="ServiceLogin"]') || document.body.innerText.includes('Sign in')
+        const hasSignIn = await this.safeExecuteJavaScript(webContents, `
+          !!document.querySelector('a[href*="ServiceLogin"]') || (document.body && document.body.innerText.includes('Sign in'))
         `);
-        isAuthenticated = !hasSignIn;
+        isAuthenticated = hasSignIn === null ? true : !hasSignIn;
       } else if (provider === 'claude') {
-        // claude redirects to /login
         isAuthenticated = !url.includes('/login');
+      } else if (provider === 'kimi' || provider === 'deepseek') {
+        const hasLoginButton = await this.safeExecuteJavaScript(webContents, `
+          (function() {
+            try {
+              if (document.querySelector('button.login-btn') || document.querySelector('a[href*="/login"]')) {
+                return true;
+              }
+              const text = document.body ? document.body.innerText : '';
+              if (text.includes('Log in') || text.includes('Sign in') || text.includes('登录') || text.includes('微信登录')) {
+                return true;
+              }
+              return false;
+            } catch(e) {
+              return false;
+            }
+          })()
+        `);
+        isAuthenticated = hasLoginButton === null ? true : !hasLoginButton;
+      } else if (provider === 'googlesearch') {
+        isAuthenticated = true;
       }
 
       this.setAuthState(provider, isAuthenticated);
@@ -65,6 +109,8 @@ class SessionManager {
     } catch (error) {
       console.error(`Error checking auth status for ${provider}:`, error);
       return false;
+    } finally {
+      this.isCheckingAuth = false;
     }
   }
 

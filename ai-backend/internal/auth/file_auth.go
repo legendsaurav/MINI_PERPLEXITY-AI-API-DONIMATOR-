@@ -84,6 +84,18 @@ func (p *FileAuthProvider) Reload() error {
 	return nil
 }
 
+// GetRecordByWorkspaceID finds a key record by its workspace ID.
+func (p *FileAuthProvider) GetRecordByWorkspaceID(workspaceID string) (*FileKeyRecord, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, rec := range p.keys {
+		if rec.WorkspaceID == workspaceID {
+			return rec, true
+		}
+	}
+	return nil, false
+}
+
 // FileMiddleware returns HTTP middleware that validates Bearer tokens
 // against the file-based key store.
 func FileMiddleware(provider *FileAuthProvider) func(http.Handler) http.Handler {

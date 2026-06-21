@@ -72,12 +72,15 @@ class BrowserProvider extends AIProvider {
   async sendPrompt(contextObject) {
     const promptString = contextObject.question;
     const imageBase64 = contextObject.image_base64 || null;
+    const files = contextObject.files || null;
     
     // Attach observer BEFORE submitting so we don't miss chunks
     await browserController.attachStreamObserver(this.providerName);
     
-    // If we have an image, inject it first, then text + submit
-    if (imageBase64) {
+    // If we have files, inject them first, then text + submit
+    if (files && files.length > 0) {
+      await browserController.injectFilesAndSubmit(this.providerName, promptString, files);
+    } else if (imageBase64) {
       await browserController.injectImageAndSubmit(this.providerName, promptString, imageBase64);
     } else {
       await browserController.injectAndSubmit(this.providerName, promptString);

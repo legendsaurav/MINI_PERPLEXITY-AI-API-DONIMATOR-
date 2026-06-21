@@ -10,6 +10,7 @@ const browserController = require('../providers/browser-controller');
 const contextEngine = require('./context-engine');
 const projectManager = require('./project-manager');
 const contextDetector = require('./context-detector');
+const providerCapabilities = require('../providers/provider-capabilities');
 
 console.log('[Startup] Main process loaded');
 
@@ -406,6 +407,12 @@ function setupAIPipeline() {
   
   console.log(`[Pipeline] BrowserProvider created for: ${currentProvider}`);
 
+  // Ensure the hidden browser window for the startup provider is loaded
+  const hiddenBrowserManager = require('../providers/hidden-browser-manager');
+  hiddenBrowserManager.ensureWindow(currentProvider).catch(err => {
+    console.error(`[Pipeline] Failed to ensure window for ${currentProvider}:`, err.message);
+  });
+
   // Handle dynamic provider switching
   eventBus.on('providerSwitched', async (newProvider) => {
     console.log(`[Pipeline] Switching AI provider to: ${newProvider}`);
@@ -463,14 +470,14 @@ function setupAIPipeline() {
       }
       
       const currentUrl = win.webContents.getURL();
-      if (!currentUrl.includes('chatgpt.com') && currentProvider === 'chatgpt') {
-        throw new Error(`Browser is not on ChatGPT. Please log in first via tray menu → Re-Login.`);
-      }
-      if (!currentUrl.includes('gemini.google.com') && currentProvider === 'gemini') {
-        throw new Error(`Browser is not on Gemini. Please log in first via tray menu → Re-Login.`);
-      }
-      if (!currentUrl.includes('claude.ai') && currentProvider === 'claude') {
-        throw new Error(`Browser is not on Claude. Please log in first via tray menu → Re-Login.`);
+      const caps = providerCapabilities.getCapabilities(currentProvider);
+      if (caps) {
+        const allowedDomains = caps.domains || [];
+        const isCorrectDomain = allowedDomains.some(d => currentUrl.includes(d));
+        if (!isCorrectDomain) {
+          const capitalized = currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1);
+          throw new Error(`Browser is not on ${capitalized}. Please log in first via tray menu → Re-Login.`);
+        }
       }
 
       await browserProviderInstance.sendPrompt(contextObject);
@@ -530,6 +537,7 @@ function setupAIPipeline() {
   eventBus.on('contextChanged', async (context) => {
     console.log(`[Context] Auto-detected: ${context.ucid} (${context.displayName})`);
     
+    // Auto-project switching disabled temporarily for testing stability
     try {
       const project = await projectManager.getOrCreateByUCID(context.ucid, context.displayName);
       const currentProject = stateManager.get('currentProject');
@@ -575,7 +583,8 @@ function setupAIPipeline() {
       if (project && project.conversation_reference) {
         const win = hiddenBrowserManager.getWindow(currentProvider);
         if (win && !win.isDestroyed()) {
-          const baseUrl = currentProvider === 'chatgpt' ? 'https://chatgpt.com' : 'https://gemini.google.com';
+          const caps = providerCapabilities.getCapabilities(currentProvider);
+          const baseUrl = caps ? caps.baseUrl : 'https://chatgpt.com';
           const fullUrl = baseUrl + project.conversation_reference;
           await win.webContents.loadURL(fullUrl);
           console.log(`[Project] Opened conversation: ${fullUrl}`);
@@ -854,6 +863,13 @@ const debugServer = http.createServer(async (req, res) => {
       const state = stateManager.get();
       res.end(JSON.stringify({ ok: true, state }));
 
+    } else if (action === '/debug/set') {
+      const key = url.searchParams.get('key');
+      const value = url.searchParams.get('value');
+      console.log(`[DEBUG-HTTP] Setting state key "${key}" to "${value}"`);
+      stateManager.set(key, value);
+      res.end(JSON.stringify({ ok: true, key, value }));
+
     } else if (action === '/debug/dom') {
       // Inspect the hidden browser DOM for file upload elements
       const currentProvider = stateManager.get('currentProvider') || 'chatgpt';
@@ -904,9 +920,33 @@ const debugServer = http.createServer(async (req, res) => {
       `);
       res.end(JSON.stringify({ ok: true, domInfo }, null, 2));
 
+    } else if (action === '/debug/eval') {
+      const currentProvider = stateManager.get('currentProvider') || 'chatgpt';
+      const hiddenBrowserManager = require('../providers/hidden-browser-manager');
+      const win = hiddenBrowserManager.getWindow(currentProvider);
+      if (!win) {
+        res.end(JSON.stringify({ error: 'No hidden browser window' }));
+        return;
+      }
+      const code = url.searchParams.get('js');
+      console.log(`[DEBUG-HTTP] Evaluating code: ${code}`);
+      const result = await win.webContents.executeJavaScript(code);
+      res.end(JSON.stringify({ ok: true, result }, null, 2));
+
+    } else if (action === '/debug/hide') {
+      console.log('[DEBUG-HTTP] Hiding all UI and provider browser windows...');
+      eventBus.emit('hideAllUIRequested');
+      const hiddenBrowserManager = require('../providers/hidden-browser-manager');
+      for (const [provider, win] of hiddenBrowserManager.windows.entries()) {
+        if (win && !win.isDestroyed()) {
+          win.hide();
+        }
+      }
+      res.end(JSON.stringify({ ok: true, action: 'hide' }));
+
     } else {
       res.statusCode = 404;
-      res.end(JSON.stringify({ error: 'Unknown action. Use /trigger/screenshot, /trigger/submit, /trigger/screenshot-and-submit, /debug/dom, or /status' }));
+      res.end(JSON.stringify({ error: 'Unknown action. Use /trigger/screenshot, /trigger/submit, /trigger/screenshot-and-submit, /debug/dom, /debug/eval, /debug/hide, or /status' }));
     }
   } catch (err) {
     res.statusCode = 500;

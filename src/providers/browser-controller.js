@@ -2,6 +2,7 @@ const { nativeImage, clipboard } = require('electron');
 const selectorManager = require('./selector-manager');
 const hiddenBrowserManager = require('./hidden-browser-manager');
 const eventBus = require('../main/event-bus');
+const providerCapabilities = require('./provider-capabilities');
 
 /**
  * Browser Controller
@@ -9,6 +10,17 @@ const eventBus = require('../main/event-bus');
  * the DOM (inject prompts, attach observers).
  */
 class BrowserController {
+  async safeExecuteJavaScript(win, code, timeoutMs = 8000) {
+    try {
+      return await Promise.race([
+        win.webContents.executeJavaScript(code),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('executeJavaScript timeout')), timeoutMs))
+      ]);
+    } catch (err) {
+      console.warn(`[BrowserController] safeExecuteJavaScript warning: ${err.message}`);
+      return null;
+    }
+  }
   
   async injectAndSubmit(provider, promptString) {
     const win = hiddenBrowserManager.getWindow(provider);
@@ -21,57 +33,196 @@ class BrowserController {
 
     console.log(`[BrowserController] Injecting prompt into ${provider}...`);
 
-    await win.webContents.executeJavaScript(`
-      (function() {
-        console.log('[Injected] Looking for textarea: ${selectors.textarea}');
-        const textarea = document.querySelector('${selectors.textarea}');
-        
-        if (!textarea) {
-          console.error('[Injected] Textarea not found!');
-          // Try contenteditable div (ChatGPT uses this)
-          const contentEditable = document.querySelector('#prompt-textarea');
-          if (contentEditable) {
-            console.log('[Injected] Found contenteditable prompt-textarea');
-            contentEditable.focus();
-            contentEditable.textContent = ${safePrompt};
-            contentEditable.dispatchEvent(new Event('input', { bubbles: true }));
-          } else {
+    let injected;
+    if (provider === 'googlesearch') {
+      injected = await this.safeExecuteJavaScript(win, `
+        (async function() {
+          console.log('[Injected] Running googlesearch-specific inject and submit...');
+          
+          async function waitForElement(selector, timeout = 10000) {
+            const start = Date.now();
+            while (Date.now() - start < timeout) {
+              let el = document.querySelector(selector) || 
+                       document.querySelector('textarea[placeholder*="Ask"]') || 
+                       document.querySelector('textarea.ITIRGe') || 
+                       document.querySelector('textarea[name="q"]') || 
+                       document.querySelector('input[name="q"]');
+              if (el) return el;
+              await new Promise(r => setTimeout(r, 200));
+            }
+            return null;
+          }
+
+          const target = await waitForElement('${selectors.textarea}');
+          if (!target) {
             console.error('[Injected] No input element found at all!');
             if (window.__aiCopilot) window.__aiCopilot.sendError('Textarea not found');
             return false;
           }
-        } else {
-          console.log('[Injected] Found textarea, setting value...');
-          // Handle both <textarea> and contenteditable elements
-          if (textarea.tagName === 'TEXTAREA' || textarea.tagName === 'INPUT') {
-            textarea.value = ${safePrompt};
+
+          console.log('[Injected] Found input element, focusing and injecting...');
+          target.focus();
+          
+          if (target.getAttribute('contenteditable') === 'true' || target.contentEditable === 'true') {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.execCommand('insertText', false, ${safePrompt});
           } else {
-            textarea.textContent = ${safePrompt};
+            if (target.select) target.select();
+            document.execCommand('insertText', false, ${safePrompt});
           }
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        
-        // Wait briefly, then click send
-        setTimeout(() => {
-          console.log('[Injected] Looking for send button: ${selectors.sendButton}');
-          const sendBtn = document.querySelector('${selectors.sendButton}');
-          if (sendBtn) {
-            console.log('[Injected] Found send button, clicking...');
-            sendBtn.click();
-          } else {
-            console.log('[Injected] Send button not found, trying Enter key...');
-            // Fallback: press Enter
-            const target = document.querySelector('${selectors.textarea}') || document.querySelector('#prompt-textarea');
-            if (target) {
-              target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          await new Promise(r => setTimeout(r, 600));
+
+          // Check if we are on Google homepage
+          const isHomepage = window.location.pathname === '/' || window.location.pathname === '/webhp';
+          
+          if (isHomepage) {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const aiModeBtn = buttons.find(b => b.textContent.trim().toLowerCase().includes('ai mode')) ||
+                              document.querySelector('button.plR5qb');
+            if (aiModeBtn) {
+              console.log('[Injected] Found AI Mode button on homepage, clicking it...');
+              aiModeBtn.click();
+              return { clicked: true, mode: 'ai_mode_btn' };
             }
           }
-        }, 500);
-        
-        return true;
-      })();
-    `);
-    
+
+          // Fallback for results page or if AI Mode button not found:
+          let sendBtn = null;
+          const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+          sendBtn = buttons.find(b => b.textContent.trim().toLowerCase() === 'submit') ||
+                    document.querySelector('button.SAvKK') ||
+                    document.querySelector('input[type="submit"]') ||
+                    document.querySelector('button[type="submit"]');
+
+          const isDisabled = sendBtn && (
+            sendBtn.disabled || 
+            sendBtn.getAttribute('aria-disabled') === 'true' ||
+            (sendBtn.className && typeof sendBtn.className === 'string' && sendBtn.className.includes('disabled'))
+          );
+
+          if (sendBtn && !isDisabled) {
+            console.log('[Injected] Found active send button, clicking...');
+            sendBtn.click();
+            return { clicked: true, mode: 'send_btn' };
+          } else {
+            console.log('[Injected] Send button not found or disabled, fallback to Enter key...');
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { 
+              key: 'Enter', 
+              code: 'Enter', 
+              keyCode: 13, 
+              which: 13, 
+              bubbles: true 
+            }));
+            return { clicked: false, fallbackEnter: true };
+          }
+        })();
+      `);
+    } else {
+      injected = await this.safeExecuteJavaScript(win, `
+        (async function() {
+          console.log('[Injected] Waiting for textarea: ${selectors.textarea}');
+          
+          async function waitForElement(selector, timeout = 10000) {
+            const start = Date.now();
+            while (Date.now() - start < timeout) {
+              let el = document.querySelector(selector) || document.querySelector('#prompt-textarea');
+              if (!el) {
+                el = document.querySelector('div[contenteditable="true"]') || document.querySelector('textarea');
+              }
+              if (el) return el;
+              await new Promise(r => setTimeout(r, 200));
+            }
+            return null;
+          }
+
+          const target = await waitForElement('${selectors.textarea}');
+          if (!target) {
+            console.error('[Injected] No input element found at all within timeout!');
+            if (window.__aiCopilot) window.__aiCopilot.sendError('Textarea not found');
+            return false;
+          }
+
+          console.log('[Injected] Found input element, focusing and injecting...');
+          target.focus();
+          
+          // Use document.execCommand('insertText') to trigger framework events properly
+          if (target.getAttribute('contenteditable') === 'true' || target.contentEditable === 'true') {
+            // Select all text and replace
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            document.execCommand('insertText', false, ${safePrompt});
+          } else {
+            // Select all and replace
+            target.select();
+            document.execCommand('insertText', false, ${safePrompt});
+          }
+
+          // Fire framework input/change events
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          // Wait briefly, then try to submit
+          await new Promise(r => setTimeout(r, 600));
+
+          console.log('[Injected] Looking for send button: ${selectors.sendButton}');
+          let sendBtn = document.querySelector('${selectors.sendButton}');
+          if (!sendBtn) {
+            // Fallbacks for Kimi and other providers
+            sendBtn = document.querySelector('button[type="submit"]') || 
+                      document.querySelector('[class*="send"]') || 
+                      document.querySelector('button');
+          }
+
+          // Check if button is actually disabled (checking class list as well since div doesn't support disabled property)
+          const isDisabled = sendBtn && (
+            sendBtn.disabled || 
+            sendBtn.getAttribute('aria-disabled') === 'true' ||
+            (sendBtn.className && typeof sendBtn.className === 'string' && sendBtn.className.includes('disabled'))
+          );
+
+          if (sendBtn && !isDisabled) {
+            console.log('[Injected] Found active send button, clicking...');
+            sendBtn.click();
+            return { clicked: true };
+          } else {
+            console.log('[Injected] Send button not found or disabled, fallback to Enter key...');
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { 
+              key: 'Enter', 
+              code: 'Enter', 
+              keyCode: 13, 
+              which: 13, 
+              bubbles: true 
+            }));
+            return { clicked: false, fallbackEnter: true };
+          }
+        })();
+      `);
+    }
+
+    console.log(`[BrowserController] Prompt injection result:`, injected);
+
+    // If it fell back to Enter key or we want to guarantee submission, send native Electron Return input events
+    if (injected && injected.fallbackEnter) {
+      console.log(`[BrowserController] Sending native Return input events...`);
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+      await this._sleep(50);
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    }
+
     console.log(`[BrowserController] Prompt injection complete.`);
   }
 
@@ -79,11 +230,211 @@ class BrowserController {
     const win = hiddenBrowserManager.getWindow(provider);
     if (!win) throw new Error('Hidden window not ready');
 
+    if (provider === 'googlesearch') {
+      console.log(`[BrowserController] Setting up observer for googlesearch...`);
+
+      const sgeObserverScript = `
+        (function() {
+          console.log('[SGE Observer] Setting up MutationObserver...');
+          if (window.__sgeObserver) {
+            window.__sgeObserver.disconnect();
+            console.log('[SGE Observer] Disconnected previous observer.');
+          }
+          if (window.__sgeStabilityTimer) {
+            clearTimeout(window.__sgeStabilityTimer);
+          }
+
+          const getSGEContent = () => {
+            // 1. Try SGE Conversational turn response
+            const turns = Array.from(document.querySelectorAll('div[data-scope-id="turn"]'));
+            if (turns.length > 0) {
+              const lastTurn = turns[turns.length - 1];
+              
+              // Target .mZJni container if present (reliable for complete answer text)
+              const mZJni = lastTurn.querySelector('.mZJni');
+              if (mZJni) {
+                const responseEl = mZJni.children[0] || mZJni;
+                let text = (responseEl.innerText || '').trim();
+                if (text) return { text, type: 'conversational' };
+              }
+              
+              // Fallback: Find closest common ancestor of all response blocks (.n6owBd, .pTRUV, .ALfJzf)
+              const blocks = Array.from(lastTurn.querySelectorAll('.n6owBd, .pTRUV, .ALfJzf'));
+              if (blocks.length > 0) {
+                let ancestor = blocks[0];
+                if (blocks.length > 1) {
+                  let temp = blocks[0].parentElement;
+                  while (temp && lastTurn.contains(temp)) {
+                    if (blocks.every(b => temp.contains(b))) {
+                      ancestor = temp;
+                      break;
+                    }
+                    temp = temp.parentElement;
+                  }
+                }
+                let text = (ancestor.innerText || '').trim();
+                if (text) return { text, type: 'conversational' };
+              }
+              
+              // Ultimate fallback: Turn inner text cleaned of feedback noise
+              let text = (lastTurn.innerText || '')
+                .replace(/copy/gi, '')
+                .replace(/(?:was this helpful\\\\?|send feedback|learn more|feedback)/gi, '')
+                .trim();
+              return { text, type: 'conversational' };
+            }
+
+
+            // 2. Try SGE AI Overview card
+            const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, div, span'));
+            let aiHeader = headings.find(el => el.textContent.trim().toLowerCase() === 'ai overview');
+            if (aiHeader) {
+              let container = aiHeader.parentElement;
+              for (let i = 0; i < 5; i++) {
+                if (container) {
+                  const text = container.innerText || '';
+                  if (text.length > 150) {
+                    const cleanText = text
+                      .replace(/ai overview/gi, '')
+                      .replace(/(?:was this helpful\\\\?|send feedback|learn more|feedback)/gi, '')
+                      .trim();
+                    return { text: cleanText, type: 'overview' };
+                  }
+                  container = container.parentElement;
+                }
+              }
+            }
+
+            // 3. Fallback to standard search results
+            const searchResults = document.querySelector('#search');
+            if (searchResults) {
+              const gElements = Array.from(document.querySelectorAll('.g'));
+              if (gElements.length > 0) {
+                let resultsText = "## 🔍 Search Results (AI Overview not generated)\\n\\n";
+                gElements.slice(0, 5).forEach((el, index) => {
+                  const titleEl = el.querySelector('h3');
+                  const title = titleEl ? titleEl.innerText : 'Result ' + (index + 1);
+                  const linkEl = el.querySelector('a');
+                  const link = linkEl ? linkEl.getAttribute('href') : '';
+                  const snippetEl = el.querySelector('div[style*="webkit-line-clamp"], .VwiC3d, .yD755b');
+                  const snippet = snippetEl ? snippetEl.innerText : el.innerText.substring(0, 300);
+                  
+                  resultsText += '### ' + title + '\\n';
+                  if (link) {
+                    resultsText += 'Link: [' + title + '](' + link + ')\\n';
+                  }
+                  resultsText += snippet + '\\n\\n';
+                });
+                return { text: resultsText, type: 'classic' };
+              }
+            }
+
+            return { text: '', type: 'none' };
+          };
+
+          const initialContent = getSGEContent();
+          let lastText = initialContent.text;
+          let hasStarted = lastText.length > 0;
+          let completionSent = false;
+
+          console.log('[SGE Observer] Initial text length:', lastText.length, 'type:', initialContent.type);
+
+          function sendCompletion(finalText) {
+            if (completionSent) return;
+            completionSent = true;
+            console.log('[SGE Observer] Complete! Final text length:', finalText.length);
+            
+            window.postMessage({ type: '__copilot_complete', data: { fullText: finalText } }, '*');
+            
+            if (window.__sgeObserver) {
+              window.__sgeObserver.disconnect();
+            }
+            if (window.__sgeStabilityTimer) {
+              clearTimeout(window.__sgeStabilityTimer);
+            }
+          }
+
+          function resetStabilityTimer() {
+            if (window.__sgeStabilityTimer) {
+              clearTimeout(window.__sgeStabilityTimer);
+            }
+            window.__sgeStabilityTimer = setTimeout(() => {
+              if (hasStarted && !completionSent) {
+                console.log('[SGE Observer] Stability timeout triggered completion.');
+                const content = getSGEContent();
+                sendCompletion(content.text);
+              }
+            }, 2500);
+          }
+
+          window.__sgeObserver = new MutationObserver(() => {
+            const content = getSGEContent();
+            const currentText = content.text;
+
+            if (currentText !== lastText) {
+              if (!hasStarted && currentText.length > 0) {
+                hasStarted = true;
+                console.log('[SGE Observer] Streaming started!');
+              }
+              lastText = currentText;
+              if (currentText.length > 0) {
+                window.postMessage({ type: '__copilot_sync', data: currentText }, '*');
+                resetStabilityTimer();
+              }
+            }
+          });
+
+          window.__sgeObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
+
+          console.log('[SGE Observer] MutationObserver active.');
+          
+          if (hasStarted) {
+            resetStabilityTimer();
+          } else {
+            window.__sgeStabilityTimer = setTimeout(() => {
+              if (!hasStarted && !completionSent) {
+                console.log('[SGE Observer] Failsafe: no content appeared within 10s. Sending fallback.');
+                const content = getSGEContent();
+                sendCompletion(content.text || 'No response fetched from Google Search AI Mode.');
+              }
+            }, 10000);
+          }
+        })();
+      `;
+
+      if (win.__googlesearchLoadListener) {
+        win.webContents.removeListener('did-finish-load', win.__googlesearchLoadListener);
+        win.webContents.removeListener('did-navigate-in-page', win.__googlesearchLoadListener);
+      }
+
+      win.__googlesearchLoadListener = async () => {
+        const url = win.webContents.getURL();
+        if (!url.includes('/search')) return;
+        console.log(`[BrowserController] SGE search page loaded/navigated. Executing SGE Observer...`);
+        await this._sleep(1000);
+        await this.safeExecuteJavaScript(win, sgeObserverScript);
+      };
+
+      win.webContents.on('did-finish-load', win.__googlesearchLoadListener);
+      win.webContents.on('did-navigate-in-page', win.__googlesearchLoadListener);
+
+      const currentUrl = win.webContents.getURL();
+      if (currentUrl.includes('/search')) {
+        console.log(`[BrowserController] Already on search page. Running SGE Observer immediately...`);
+        this.safeExecuteJavaScript(win, sgeObserverScript);
+      }
+      return;
+    }
+
     const selectors = selectorManager.getSelectors(provider);
 
     console.log(`[BrowserController] Attaching MutationObserver for ${provider}...`);
 
-    await win.webContents.executeJavaScript(`
+    await this.safeExecuteJavaScript(win, `
       (function() {
         console.log('[Observer] Setting up MutationObserver...');
 
@@ -201,6 +552,37 @@ class BrowserController {
         }
 
         window.__copilotObserver = new MutationObserver(() => {
+          // Check if streaming finished via button states (do this first to prevent early return blinding)
+          const isStopButtonVisible = !!document.querySelector('${selectors.streamingIndicator}');
+          const isSendButtonEnabled = (() => {
+            const btn = document.querySelector('${selectors.sendButton}');
+            return btn && 
+                   !btn.disabled && 
+                   btn.getAttribute('aria-disabled') !== 'true' &&
+                   !(btn.className && typeof btn.className === 'string' && btn.className.includes('disabled'));
+          })();
+
+          if (isStopButtonVisible) {
+             window.__sawStopButton = true;
+          }
+          
+          if (!isSendButtonEnabled) {
+             window.__sawSendButtonDisabled = true;
+          }
+
+          // If we saw the stop button and now it's gone, or the send button disabled and re-enabled
+          if (hasStarted && !completionSent) {
+            if ((window.__sawStopButton && !isStopButtonVisible) || (window.__sawSendButtonDisabled && isSendButtonEnabled)) {
+              // Wait 1.5s for any final text to trickle into the DOM
+              setTimeout(() => {
+                if (!completionSent) {
+                  console.log('[Observer] Completion triggered by UI button state change.');
+                  sendCompletion();
+                }
+              }, 1500);
+            }
+          }
+
           const allNodes = document.querySelectorAll('${selectors.responseArea}');
           if (allNodes.length === 0) return;
           
@@ -229,41 +611,15 @@ class BrowserController {
               resetStabilityTimer();
             }
           }
-
-          // Check if streaming finished via button states
-          const isStopButtonVisible = !!document.querySelector('${selectors.streamingIndicator}');
-          const isSendButtonEnabled = (() => {
-            const btn = document.querySelector('${selectors.sendButton}');
-            return btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
-          })();
-
-          if (isStopButtonVisible) {
-             window.__sawStopButton = true;
-          }
-          
-          if (!isSendButtonEnabled) {
-             window.__sawSendButtonDisabled = true;
-          }
-
-          // If we saw the stop button and now it's gone, or the send button disabled and re-enabled
-          if (hasStarted && !completionSent) {
-            if ((window.__sawStopButton && !isStopButtonVisible) || (window.__sawSendButtonDisabled && isSendButtonEnabled)) {
-              // Wait 1.5s for any final text to trickle into the DOM
-              setTimeout(() => {
-                if (!completionSent) {
-                  console.log('[Observer] Completion triggered by UI button state change.');
-                  sendCompletion();
-                }
-              }, 1500);
-            }
-          }
         });
 
         // Observe the entire body
         window.__copilotObserver.observe(document.body, {
           childList: true,
           subtree: true,
-          characterData: true
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['class', 'disabled', 'aria-disabled']
         });
         
         console.log('[Observer] MutationObserver attached to document.body');
@@ -481,6 +837,138 @@ class BrowserController {
   }
 
   /**
+   * Inject generic files and submit prompt
+   */
+  async injectFilesAndSubmit(provider, promptString, files) {
+    const win = hiddenBrowserManager.getWindow(provider);
+    if (!win) throw new Error('Hidden window not ready');
+
+    const selectors = selectorManager.getSelectors(provider);
+
+    console.log(`[BrowserController] Injecting ${files.length} files + prompt into ${provider}...`);
+
+    // Step 1: Inject files via input[type="file"]
+    const filesInjected = await win.webContents.executeJavaScript(`
+      (async function() {
+        try {
+          const files = ${JSON.stringify(files)};
+          
+          // Find generic file input (usually the one without accept="image/*")
+          const fileInput = document.querySelector('input[type="file"]:not([accept="image/*"])') 
+                         || document.querySelector('input[type="file"]');
+          
+          if (!fileInput) {
+            console.error('[Injected] Generic file input not found');
+            return null;
+          }
+
+          const dt = new DataTransfer();
+          for (const f of files) {
+            // Convert base64 back to Blob/File
+            const raw = atob(f.data);
+            const arr = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+            const blob = new Blob([arr], { type: f.type });
+            const file = new File([blob], f.name, { type: f.type, lastModified: Date.now() });
+            dt.items.add(file);
+          }
+
+          fileInput.files = dt.files;
+          fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+          console.log('[Injected] Files set on input[type=file]');
+          return 'success';
+        } catch (err) {
+          console.error('[Injected] File injection error:', err.message);
+          return 'error:' + err.message;
+        }
+      })();
+    `);
+
+    console.log(`[BrowserController] File injection result: ${filesInjected}`);
+
+    if (!filesInjected || (typeof filesInjected === 'string' && filesInjected.startsWith('error:'))) {
+      console.warn(`[BrowserController] File injection failed, falling back to text-only.`);
+      return this.injectAndSubmit(provider, promptString);
+    }
+
+    // Step 2: Wait briefly and check send button enabled (indicates upload process complete)
+    console.log(`[BrowserController] Waiting for file upload and readiness...`);
+    await this._sleep(3000);
+    const ready = await this._waitForSendEnabled(win, selectors, 45000);
+    console.log(`[BrowserController] Provider readiness: ${ready}`);
+
+    // Step 3: Focus textarea and type prompt
+    await win.webContents.executeJavaScript(`
+      (function() {
+        const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
+        if (textarea) {
+          textarea.focus();
+          textarea.click();
+          // Move cursor to end
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(textarea);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      })();
+    `);
+    await this._sleep(300);
+
+    await win.webContents.insertText(promptString);
+    console.log(`[BrowserController] Text typed.`);
+    await this._sleep(500);
+
+    // Step 4: Submit via Return key
+    console.log(`[BrowserController] Submitting...`);
+    await win.webContents.executeJavaScript(`
+      (function() {
+        const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
+        if (textarea) textarea.focus();
+      })();
+    `);
+    await this._sleep(200);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+    await this._sleep(50);
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+
+    // Verify submission
+    await this._sleep(2000);
+    const submitted = await win.webContents.executeJavaScript(`
+      (function() {
+        const sendBtn = document.querySelector('[data-testid="send-button"]');
+        const stopBtn = document.querySelector('[data-testid="stop-button"]') 
+          || document.querySelector('button[aria-label="Stop generating"]')
+          || document.querySelector('button[aria-label="Stop"]');
+        const textarea = document.querySelector('#prompt-textarea');
+        const textareaEmpty = textarea && textarea.textContent.trim().length === 0;
+        return { sendBtn: !!sendBtn, stopBtn: !!stopBtn, textareaEmpty };
+      })();
+    `);
+    console.log(`[BrowserController] Post-submit check: ${JSON.stringify(submitted)}`);
+
+    if (submitted && !submitted.stopBtn && !submitted.textareaEmpty) {
+      console.log(`[BrowserController] Trying direct button click...`);
+      await win.webContents.executeJavaScript(`
+        (function() {
+          const btns = document.querySelectorAll('button');
+          for (const btn of btns) {
+            const testid = btn.getAttribute('data-testid') || '';
+            const aria = btn.getAttribute('aria-label') || '';
+            if (testid.includes('send') || aria.includes('Send')) {
+              btn.disabled = false;
+              btn.click();
+              return;
+            }
+          }
+        })();
+      `);
+    }
+  }
+
+  /**
    * Wait for ChatGPT to show the image upload preview
    */
   async _waitForImageUpload(win, timeoutMs) {
@@ -657,7 +1145,8 @@ class BrowserController {
     const win = hiddenBrowserManager.getWindow(provider);
     if (!win) throw new Error('Hidden browser not ready');
 
-    const baseUrl = provider === 'chatgpt' ? 'https://chatgpt.com' : 'https://gemini.google.com';
+    const caps = providerCapabilities.getCapabilities(provider);
+    const baseUrl = caps ? caps.baseUrl : 'https://chatgpt.com';
     const fullUrl = conversationUrl.startsWith('http') ? conversationUrl : baseUrl + conversationUrl;
 
     console.log(`[BrowserController] Navigating to conversation: ${fullUrl}`);

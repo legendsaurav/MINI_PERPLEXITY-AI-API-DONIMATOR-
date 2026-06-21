@@ -9,6 +9,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ProviderConfig holds per-provider settings.
+type ProviderConfig struct {
+	BaseURL            string `yaml:"base_url"`
+	LoginURL           string `yaml:"login_url"`
+	StartupTimeoutSecs int    `yaml:"startup_timeout_secs"`
+	UploadTimeout      string `yaml:"upload_timeout"`
+	AnalysisTimeout    string `yaml:"analysis_timeout"`
+}
+
+// UploadsConfig holds validation limits and paths for user uploads.
+type UploadsConfig struct {
+	MaxFileSize         string `yaml:"max_file_size"`
+	MaxZipSize          string `yaml:"max_zip_size"`
+	MaxTotalRequestSize string `yaml:"max_total_request_size"`
+	MaxFilesPerUpload   int    `yaml:"max_files_per_upload"`
+	MaxDirectoryDepth   int    `yaml:"max_directory_depth"`
+	TempDir             string `yaml:"temp_dir"`
+}
+
 // Config holds all application configuration.
 type Config struct {
 	Server    ServerConfig              `yaml:"server"`
@@ -16,6 +35,7 @@ type Config struct {
 	Browser   BrowserConfig             `yaml:"browser"`
 	Auth      AuthConfig                `yaml:"auth"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
+	Uploads   UploadsConfig             `yaml:"uploads"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -59,13 +79,6 @@ type AuthConfig struct {
 	APIKeyPrefix string `yaml:"api_key_prefix"`
 }
 
-// ProviderConfig holds per-provider settings.
-type ProviderConfig struct {
-	BaseURL            string `yaml:"base_url"`
-	LoginURL           string `yaml:"login_url"`
-	StartupTimeoutSecs int    `yaml:"startup_timeout_secs"`
-}
-
 // Load reads config from a YAML file with environment variable overrides.
 func Load(path string) (*Config, error) {
 	cfg := &Config{
@@ -80,6 +93,14 @@ func Load(path string) (*Config, error) {
 		},
 		Auth:      AuthConfig{APIKeyPrefix: "sk-"},
 		Providers: make(map[string]ProviderConfig),
+		Uploads: UploadsConfig{
+			MaxFileSize:         "500MB",
+			MaxZipSize:          "2GB",
+			MaxTotalRequestSize: "5GB",
+			MaxFilesPerUpload:   1000,
+			MaxDirectoryDepth:   20,
+			TempDir:             "./data/temp_uploads",
+		},
 	}
 
 	data, err := os.ReadFile(path)

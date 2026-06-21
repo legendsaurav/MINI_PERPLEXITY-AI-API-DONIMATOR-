@@ -18,6 +18,11 @@ import (
 	"github.com/proka/ai-backend/internal/maintenance"
 	"github.com/proka/ai-backend/internal/providers"
 	"github.com/proka/ai-backend/internal/providers/chatgpt"
+	"github.com/proka/ai-backend/internal/providers/claude"
+	"github.com/proka/ai-backend/internal/providers/deepseek"
+	"github.com/proka/ai-backend/internal/providers/gemini"
+	"github.com/proka/ai-backend/internal/providers/googlesearch"
+	"github.com/proka/ai-backend/internal/providers/kimi"
 	"github.com/proka/ai-backend/internal/scheduler"
 	"github.com/proka/ai-backend/internal/workspace"
 )
@@ -71,6 +76,21 @@ func main() {
 	registry.Register("chatgpt", func(eng engine.BrowserEngine) providers.Provider {
 		return chatgpt.New(eng)
 	})
+	registry.Register("gemini", func(eng engine.BrowserEngine) providers.Provider {
+		return gemini.New(eng)
+	})
+	registry.Register("claude", func(eng engine.BrowserEngine) providers.Provider {
+		return claude.New(eng)
+	})
+	registry.Register("kimi", func(eng engine.BrowserEngine) providers.Provider {
+		return kimi.New(eng)
+	})
+	registry.Register("deepseek", func(eng engine.BrowserEngine) providers.Provider {
+		return deepseek.New(eng)
+	})
+	registry.Register("googlesearch", func(eng engine.BrowserEngine) providers.Provider {
+		return googlesearch.New(eng)
+	})
 
 	slog.Info("Registered providers", "providers", registry.List())
 
@@ -80,6 +100,7 @@ func main() {
 		WorkspaceService: workspaceSvc,
 		Scheduler:        sched,
 		ProviderRegistry: registry,
+		Config:           cfg,
 	}
 
 	// ── File-based auth (standalone mode) ───────────────────────────
@@ -97,7 +118,7 @@ func main() {
 	router := api.NewRouter(deps)
 
 	// ── Start maintenance worker ────────────────────────────────────
-	maintenanceWorker := maintenance.NewWorker(sched)
+	maintenanceWorker := maintenance.NewWorker(sched, cfg.Uploads.TempDir)
 	maintenanceWorker.Start(context.Background())
 	defer maintenanceWorker.Stop()
 

@@ -37,13 +37,25 @@ go run cmd/server/main.go
 
 ## Usage Example
 
+### 🔑 Active API Key for External Models
+We have generated a pre-configured, active API key for you:
+- **API Key**: `sk-2ffc5d5769594673b2ae8b5173108d91`
+- **Username**: `other_models`
+- **Device**: `external_api`
+
+To generate additional API keys:
 ```bash
-# Chat with AI
-curl -N -H "Authorization: Bearer sk-your-api-key" \
+go run cmd/keygen/main.go -user <username> -device <device_name>
+```
+
+### Chat with AI
+```bash
+curl -N -H "Authorization: Bearer sk-2ffc5d5769594673b2ae8b5173108d91" \
   -H "Content-Type: application/json" \
   -d '{"project":"Coding","message":"Explain Go interfaces"}' \
   http://localhost:8080/v1/chat
 ```
+
 
 ## Project Structure
 

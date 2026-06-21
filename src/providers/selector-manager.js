@@ -5,19 +5,12 @@
  */
 const SELECTORS = {
   chatgpt: {
-    // The main input area
     textarea: '#prompt-textarea',
-    // The submit arrow/button
     sendButton: '[data-testid="send-button"]',
-    // The button that stops generation
     stopButton: '[data-testid="stop-button"], button[aria-label="Stop generating"]',
-    // The container holding the assistant's response blocks
     responseArea: '[data-message-author-role="assistant"]',
-    // Sidebar list of previous chats
     sidebarChatList: 'nav[aria-label="Chat history"] a',
-    // The title element inside the sidebar list item
     chatTitle: 'div.relative.grow.overflow-hidden',
-    // Indicator that a stream is currently active (e.g. the stop button exists)
     streamingIndicator: '[data-testid="stop-button"]'
   },
   gemini: {
@@ -37,6 +30,33 @@ const SELECTORS = {
     sidebarChatList: 'nav a',
     chatTitle: '.truncate',
     streamingIndicator: '.animate-pulse'
+  },
+  kimi: {
+    textarea: '.chat-input-editor',
+    sendButton: '.send-button-container',
+    stopButton: '.send-button-container.stop, .stop-button-container, .stop-btn',
+    responseArea: '.chat-content-item-assistant .markdown-container:not(.toolcall-content-text) .markdown',
+    sidebarChatList: 'nav a',
+    chatTitle: '.title-text',
+    streamingIndicator: '.send-button-container.stop, .kimi-streaming, .stop-button-container'
+  },
+  deepseek: {
+    textarea: 'textarea',
+    sendButton: 'div[role="button"].ds-button--primary, button.send-btn',
+    stopButton: '.ds-loading',
+    responseArea: '.ds-markdown.ds-assistant-message-main-content',
+    sidebarChatList: 'a._546d736',
+    chatTitle: '.c08e6e93',
+    streamingIndicator: '.ds-loading'
+  },
+  googlesearch: {
+    textarea: 'textarea[type="search"], input[name="q"]',
+    sendButton: 'input[type="submit"], button[type="submit"]',
+    stopButton: 'button.stop-btn',
+    responseArea: 'div[data-ved], .g, #search',
+    sidebarChatList: '#search a',
+    chatTitle: '.title',
+    streamingIndicator: '#loading'
   }
 };
 

@@ -2,14 +2,12 @@ package providers
 
 import (
 	"context"
-
-	"github.com/proka/ai-backend/internal/engine"
 )
 
 // MessageRequest holds the data for a chat message.
 type MessageRequest struct {
 	Project  string            `json:"project"`
-	Text     string            `json:"message"`
+	Text     string            `json:"text"`
 	Images   []ImageAttachment `json:"images,omitempty"`
 	Files    []FileAttachment  `json:"files,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
@@ -31,17 +29,19 @@ type FileAttachment struct {
 
 // StreamChunk represents a single piece of a streamed response.
 type StreamChunk struct {
-	Data  string `json:"data"`
-	Done  bool   `json:"done"`
-	Error string `json:"error,omitempty"`
+	Type    string `json:"type"`
+	Content string `json:"content"`
 }
 
 // ProviderCapabilities describes what a provider supports.
 type ProviderCapabilities struct {
-	SupportsStreaming bool  `json:"supports_streaming"`
-	SupportsVision   bool  `json:"supports_vision"`
-	SupportsFiles    bool  `json:"supports_files"`
-	MaxImageSize     int64 `json:"max_image_size"`
+	Streaming     bool `json:"supports_streaming"`
+	Vision        bool `json:"supports_vision"`
+	FileUpload    bool `json:"supports_files"`
+	ImageUpload   bool `json:"supports_images"`
+	AudioUpload   bool `json:"supports_audio"`
+	CodeExecution bool `json:"supports_code_execution"`
+	ZipUpload     bool `json:"supports_zip"`
 }
 
 // Provider is the interface that all AI provider implementations must satisfy.
@@ -51,14 +51,23 @@ type Provider interface {
 	// Name returns the provider identifier (e.g., "chatgpt", "gemini", "claude").
 	Name() string
 
-	// Initialize sets up the provider with a browser engine instance.
-	Initialize(ctx context.Context, eng engine.BrowserEngine) error
+	// Initialize sets up the provider.
+	Initialize(ctx context.Context) error
 
 	// CheckSession verifies that the user is logged in.
 	CheckSession(ctx context.Context) (bool, error)
 
-	// OpenConversation navigates to an existing conversation URL (or starts new).
-	OpenConversation(ctx context.Context, conversationURL string) error
+	// OpenWorkspace navigates to the active conversation or starts fresh.
+	OpenWorkspace(ctx context.Context, projectMetadata map[string]interface{}) error
+
+	// UploadFiles uploads the given files to the active session.
+	UploadFiles(ctx context.Context, files []FileAttachment) error
+
+	// WaitForUploadCompletion waits for file uploads to be verified by the provider.
+	WaitForUploadCompletion(ctx context.Context) error
+
+	// WaitForAnalysisCompletion waits for background indexing/processing to finish.
+	WaitForAnalysisCompletion(ctx context.Context) error
 
 	// SendMessage types and submits a message to the AI provider.
 	SendMessage(ctx context.Context, req MessageRequest) error
@@ -68,6 +77,9 @@ type Provider interface {
 
 	// Cancel attempts to stop the current generation.
 	Cancel(ctx context.Context) error
+
+	// Health verifies provider readiness and health.
+	Health(ctx context.Context) error
 
 	// Shutdown cleanly tears down the provider.
 	Shutdown(ctx context.Context) error

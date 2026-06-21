@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/proka/ai-backend/internal/auth"
+	"github.com/proka/ai-backend/internal/config"
 	"github.com/proka/ai-backend/internal/database"
 	"github.com/proka/ai-backend/internal/providers"
 	"github.com/proka/ai-backend/internal/scheduler"
@@ -21,6 +22,7 @@ type Dependencies struct {
 	Scheduler        *scheduler.Scheduler
 	ProviderRegistry *providers.Registry
 	FileAuth         *auth.FileAuthProvider // Used when DB is nil
+	Config           *config.Config
 }
 
 // NewRouter creates the chi router with all middleware and routes.

@@ -1,7 +1,34 @@
-const { globalShortcut } = require('electron');
+const { globalShortcut, dialog } = require('electron');
 const eventBus = require('./event-bus');
 const contextEngine = require('./context-engine');
 const captureModule = require('./capture');
+const fs = require('fs');
+const path = require('path');
+
+function getMimeType(filepath) {
+  const ext = path.extname(filepath).toLowerCase();
+  const mimeMap = {
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.zip': 'application/zip',
+    '.json': 'application/json',
+    '.js': 'application/javascript',
+    '.html': 'text/html',
+    '.css': 'text/css'
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
+
 
 /**
  * Global Shortcuts Module
@@ -59,6 +86,7 @@ class ShortcutsModule {
       console.log('[Shortcut] Ctrl+Shift+Q pressed → Text question');
       
       contextEngine.clearPendingScreenshot();
+      contextEngine.clearPendingFiles();
       
       eventBus.emit('showInputWithScreenshot', {
         prefill: '',
@@ -66,6 +94,53 @@ class ShortcutsModule {
       });
     });
     console.log('[Shortcuts] Ctrl+Shift+Q registered:', r2);
+
+    // Ctrl+Shift+U → File upload and prompt
+    const rUpload = globalShortcut.register('CommandOrControl+Shift+U', async () => {
+      console.log('[Shortcut] Ctrl+Shift+U pressed → File upload');
+      
+      contextEngine.clearPendingScreenshot();
+      contextEngine.clearPendingFiles();
+
+      try {
+        const result = await dialog.showOpenDialog({
+          title: 'Select Files to Upload to AI Model',
+          properties: ['openFile', 'multiSelections'],
+          buttonLabel: 'Attach Files'
+        });
+        
+        if (result.canceled || result.filePaths.length === 0) {
+          console.log('[Shortcut] File upload selection cancelled.');
+          return;
+        }
+
+        const filesData = result.filePaths.map(filePath => {
+          const content = fs.readFileSync(filePath);
+          return {
+            name: path.basename(filePath),
+            type: getMimeType(filePath),
+            data: content.toString('base64')
+          };
+        });
+
+        // Store these files in ContextEngine
+        contextEngine.setPendingFiles(filesData);
+        console.log(`[Shortcut] Stored ${filesData.length} pending files in ContextEngine.`);
+
+        // Prefill input box with a helper message
+        const fileNamesList = filesData.map(f => f.name).join(', ');
+        eventBus.emit('showInputWithScreenshot', {
+          prefill: `Attached: [${fileNamesList}]. Tell me what to do with these files.`,
+          hasScreenshot: false,
+          hasFiles: true
+        });
+
+      } catch (err) {
+        console.error('[Shortcut] File selection error:', err.message);
+      }
+    });
+    console.log('[Shortcuts] Ctrl+Shift+U registered:', rUpload);
+
 
     // Ctrl+Shift+O → Toggle Overlay
     const r3 = globalShortcut.register('CommandOrControl+Shift+O', () => {
@@ -107,13 +182,12 @@ class ShortcutsModule {
     // Ctrl+Shift+M → Toggle AI Model
     const rModel = globalShortcut.register('CommandOrControl+Shift+M', () => {
       console.log('[Shortcut] Ctrl+Shift+M pressed → Toggle AI Model');
-      const providers = ['chatgpt', 'claude', 'gemini'];
+      const providers = ['chatgpt', 'claude', 'gemini', 'kimi', 'deepseek', 'googlesearch'];
       const current = require('./state-manager').get('currentProvider') || 'chatgpt';
       const nextIndex = (providers.indexOf(current) + 1) % providers.length;
       const nextProvider = providers[nextIndex];
       require('./state-manager').set('currentProvider', nextProvider);
       console.log(`[Shortcut] AI Model switched to: ${nextProvider}`);
-      eventBus.emit('providerSwitched', nextProvider);
     });
     console.log('[Shortcuts] Ctrl+Shift+M registered:', rModel);
 

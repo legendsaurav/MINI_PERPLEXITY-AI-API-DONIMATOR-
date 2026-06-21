@@ -24,6 +24,7 @@ The Copilot is designed to be keyboard-first. Use these shortcuts from any appli
 | :--- | :--- |
 | `Ctrl+Shift+Space` | **Analyze Screen:** Captures a screenshot and opens the input window. |
 | `Ctrl+Shift+Q` | **Quick Question:** Opens a text-only input window. |
+| `Ctrl+Shift+U` | **Upload Files:** Open native file picker to upload multiple files into the active context. |
 | `Ctrl+Shift+O` | **Toggle Overlay:** Show or hide the floating chat window. |
 | `Ctrl+Shift+P` | **Toggle Projects:** Manage your projects and context mappings. |
 | `Ctrl+Shift+H` | **Conversation History:** Browse previous chats. |
@@ -78,6 +79,54 @@ Instead of using REST APIs, this app manages "hidden browsers" (Electron Browser
 
 ---
 
+## 🔗 Centralized Go Backend & API Gateway
+
+In addition to the Electron overlay, this repository includes a production-grade Go backend (`ai-backend`) that serves as a centralized gateway. It routes programmatic API calls to your persistent, isolated desktop browser profiles (ChatGPT, Gemini, Claude, etc.), allowing other models, external applications, or developer scripts to use your accounts without direct API keys.
+
+The backend features a robust file upload architecture using a state machine and Server-Sent Events (SSE). It handles context injection directly into DOM elements within the hidden browser instances, allowing for seamless multi-file analysis and prompt submission.
+
+### 🔑 API Keys and Security
+
+> **⚠️ SECURITY WARNING:** Never commit active API keys to source control. The key provided below is for local testing only. In a production environment, use environment variables or a secure secret manager.
+
+We have generated a pre-configured API key that you can use immediately to connect other models/clients for local testing:
+- **API Key**: `sk-2ffc5d5769594673b2ae8b5173108d91` (Do not use in production)
+- **Username**: `other_models`
+- **Device**: `external_api`
+- **Stored in**: `ai-backend/data/api_keys.json`
+
+To generate additional API keys, run the keygen tool:
+```bash
+cd ai-backend
+go run cmd/keygen/main.go -user <username> -device <device_name>
+```
+
+### 🚀 Running the Gateway
+1. Navigate to the backend directory and download dependencies:
+   ```bash
+   cd ai-backend
+   go mod tidy
+   ```
+2. Start the HTTP server:
+   ```bash
+   go run cmd/server/main.go
+   ```
+   *Note: If no PostgreSQL database is running, the gateway automatically falls back to file-based authentication using `ai-backend/data/api_keys.json`.*
+
+### 🛠️ Interacting programmatically with other models
+To route requests from other applications or models, send a request to the `/v1/chat` endpoint:
+
+```bash
+curl -N -H "Authorization: Bearer sk-2ffc5d5769594673b2ae8b5173108d91" \
+  -H "Content-Type: application/json" \
+  -d '{"project":"General","text":"Explain how web scraping works"}' \
+  http://localhost:8080/v1/chat
+```
+
+The server will match the API key, acquire a browser slot in the scheduler, inject your prompt into the browser page, and stream the response chunk-by-chunk back to your client.
+
+---
+
 ## 📁 Project Structure
 
 -   `src/main/`: Electron main process logic (shortcuts, state, context detection).
@@ -91,5 +140,4 @@ Instead of using REST APIs, this app manages "hidden browsers" (Electron Browser
 ## ⚖️ License
 
 [MIT License](LICENSE)
-"# MINI_PERPLEXITY-AI-API-DONIMATOR-" 
-"# MINI_PERPLEXITY-AI-API-DONIMATOR-" 
+

@@ -12,13 +12,11 @@ class ContextEngine {
   constructor() {
     this.frozenContext = null;
     this.pendingScreenshot = null; // Pre-captured screenshot
+    this.pendingFiles = null; // Pre-selected files
   }
 
   /**
    * Store a pre-captured screenshot to be used in the next buildContext() call.
-   * This is used when we capture the screen BEFORE showing the input window,
-   * so the input window itself doesn't appear in the screenshot.
-   * @param {string} base64 The screenshot as a base64 data URL
    */
   setPendingScreenshot(base64) {
     this.pendingScreenshot = base64;
@@ -30,6 +28,22 @@ class ContextEngine {
    */
   clearPendingScreenshot() {
     this.pendingScreenshot = null;
+  }
+
+  /**
+   * Store pre-selected files to be used in the next buildContext() call.
+   * @param {Array} files Array of {name, type, data} objects
+   */
+  setPendingFiles(files) {
+    this.pendingFiles = files;
+    console.log('[ContextEngine] Pending files stored.');
+  }
+
+  /**
+   * Clear the pending files without using them
+   */
+  clearPendingFiles() {
+    this.pendingFiles = null;
   }
 
   /**
@@ -60,6 +74,16 @@ class ContextEngine {
       console.log('[ContextEngine] No screenshot — text-only mode.');
     }
 
+    // Use pending files if available, otherwise skip
+    let files;
+    if (this.pendingFiles) {
+      files = this.pendingFiles;
+      this.pendingFiles = null; // Consume it
+      console.log('[ContextEngine] Using pre-selected files.');
+    } else {
+      files = null;
+    }
+
     const currentProject = stateManager.get('currentProject') || 'Default';
     const currentProvider = stateManager.get('currentProvider') || 'chatgpt';
     const captureId = crypto.randomUUID();
@@ -75,7 +99,8 @@ class ContextEngine {
       question: question,
       selected_text: "",
       ocr_text: "",
-      image_base64: imageBase64
+      image_base64: imageBase64,
+      files: files
     };
 
     // If freeze is enabled now, store this context

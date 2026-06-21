@@ -41,15 +41,15 @@ func StreamToClient(w http.ResponseWriter, r *http.Request, ch <-chan providers.
 				return
 			}
 
-			if chunk.Error != "" {
-				errData, _ := json.Marshal(map[string]string{"error": chunk.Error})
+			if chunk.Type == "error" {
+				errData, _ := json.Marshal(map[string]string{"error": chunk.Content})
 				fmt.Fprintf(w, "event: error\ndata: %s\n\n", errData)
 				flusher.Flush()
-				slog.Warn("[SSE] Stream error", "error", chunk.Error)
+				slog.Warn("[SSE] Stream error", "error", chunk.Content)
 				return
 			}
 
-			if chunk.Done {
+			if chunk.Type == "done" {
 				fmt.Fprintf(w, "data: [DONE]\n\n")
 				flusher.Flush()
 				slog.Debug("[SSE] Stream complete (done flag)")

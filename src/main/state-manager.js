@@ -116,7 +116,10 @@ class StateManager {
 
       // Emit specific events for critical state changes
       if (key === 'currentProject') eventBus.emit('projectChanged', value);
-      if (key === 'currentProvider') eventBus.emit('providerChanged', value);
+      if (key === 'currentProvider') {
+        eventBus.emit('providerChanged', value);
+        eventBus.emit('providerSwitched', value);
+      }
     }
   }
 
