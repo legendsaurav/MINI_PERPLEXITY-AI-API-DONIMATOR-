@@ -7,7 +7,7 @@ const { app } = require('electron');
  * Keys that are persisted to disk.
  * Everything else is volatile and lives only in-memory.
  */
-const PERSISTED_KEYS = new Set(['currentProject', 'currentProvider', 'apiKey']);
+const PERSISTED_KEYS = new Set(['currentProject', 'currentProvider', 'apiKey', 'screenshotDelays']);
 
 /**
  * Simple JSON file-based persistence (electron-store is ESM-only v10+).
@@ -58,6 +58,15 @@ class StateManager {
       currentProject: null,
       currentProvider: 'chatgpt',
       apiKey: null,
+      screenshotDelays: {
+        chatgpt: 8,
+        gemini: 5,
+        claude: 5,
+        kimi: 5,
+        deepseek: 5,
+        perplexity: 5,
+        google: 4
+      }
     });
 
     // In-memory state — merge persisted values with volatile defaults

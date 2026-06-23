@@ -13,14 +13,14 @@ type Server struct {
 	router *chi.Mux
 }
 
-func NewServer(chatService ports.ChatService, apiKey string) *Server {
+func NewServer(chatService ports.ChatService, apiKey, supabaseURL, supabaseKey string) *Server {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	r.Route("/v1", func(r chi.Router) {
-		r.Use(apiMiddleware.AuthMiddleware(apiKey))
+		r.Use(apiMiddleware.AuthMiddleware(apiKey, supabaseURL, supabaseKey))
 		
 		chatHandler := handlers.NewChatHandler(chatService)
 		r.Post("/chat/completions", chatHandler.HandleChatCompletions)

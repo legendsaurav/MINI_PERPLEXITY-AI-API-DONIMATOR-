@@ -7,7 +7,7 @@ const capabilities = require('./provider-capabilities');
 // 🔍 DEBUG MODE - Set to true to make the hidden browser VISIBLE
 // so you can see what's happening (CloudFlare, CAPTCHA, login, etc.)
 // ============================================================
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 /**
  * Hidden Browser Manager
@@ -65,6 +65,9 @@ class HiddenBrowserManager {
     win.webContents.on('did-navigate', (event, url) => {
       console.log(`[DEBUG] 🌐 Navigated to: ${url}`);
     });
+    win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      console.log(`[Browser Console - ${provider}] ${message}`);
+    });
     win.webContents.on('did-navigate-in-page', (event, url) => {
       console.log(`[DEBUG] 🌐 In-page navigation: ${url}`);
     });
@@ -73,6 +76,15 @@ class HiddenBrowserManager {
     });
     win.webContents.on('did-finish-load', () => {
       console.log(`[DEBUG] ✅ Page finished loading: ${win.webContents.getURL()}`);
+      // Re-attach MutationObserver on full page load (crucial for multi-page search flows like Google)
+      try {
+        const browserController = require('./browser-controller');
+        browserController.attachStreamObserver(provider).catch(err => {
+          console.log(`[HiddenBrowser] Failed to auto-attach observer for ${provider}: ${err.message}`);
+        });
+      } catch (err) {
+        console.error(`[HiddenBrowser] Error re-attaching observer for ${provider}:`, err.message);
+      }
     });
 
     console.log(`[DEBUG] 🚀 Loading URL: ${caps.baseUrl}`);

@@ -10,6 +10,8 @@ type Config struct {
 	DatabaseURL string            `json:"database_url"`
 	APIKey      string            `json:"api_key"`
 	Models      map[string]string `json:"models"`
+	SupabaseURL string            `json:"supabase_url"`
+	SupabaseKey string            `json:"supabase_key"`
 }
 
 func LoadConfig(path string) (*Config, error) {

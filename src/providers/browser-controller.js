@@ -2,6 +2,7 @@ const { nativeImage, clipboard } = require('electron');
 const selectorManager = require('./selector-manager');
 const hiddenBrowserManager = require('./hidden-browser-manager');
 const eventBus = require('../main/event-bus');
+const stateManager = require('../main/state-manager');
 
 /**
  * Browser Controller
@@ -24,6 +25,23 @@ class BrowserController {
     await win.webContents.executeJavaScript(`
       (function() {
         console.log('[Injected] Looking for textarea: ${selectors.textarea}');
+        
+        // Custom logic for Google Search: click "AI Mode" button if present
+        if ('${provider}' === 'google') {
+          try {
+            const aiModeElements = Array.from(document.querySelectorAll('button, div, span, a')).filter(el => {
+              const text = el.textContent.trim();
+              return text.toLowerCase() === 'ai mode' || text.toLowerCase().includes('ai mode');
+            });
+            if (aiModeElements.length > 0) {
+              console.log('[Injected] Found AI Mode element on Google, clicking...');
+              aiModeElements[0].click();
+            }
+          } catch (e) {
+            console.error('[Injected] Error clicking AI Mode on Google:', e.message);
+          }
+        }
+
         const textarea = document.querySelector('${selectors.textarea}');
         
         if (!textarea) {
@@ -94,12 +112,15 @@ class BrowserController {
         if (window.__copilotStabilityTimer) {
           clearTimeout(window.__copilotStabilityTimer);
         }
+        if (window.__copilotInactivityTimer) {
+          clearTimeout(window.__copilotInactivityTimer);
+        }
 
         // Snapshot: capture the current text of the LAST response node at attach time.
         // Anything beyond this text is "new" streaming content.
         const allNodesAtStart = document.querySelectorAll('${selectors.responseArea}');
         const lastNodeAtStart = allNodesAtStart.length > 0 ? allNodesAtStart[allNodesAtStart.length - 1] : null;
-        const snapshotText = lastNodeAtStart ? (lastNodeAtStart.innerText || '') : '';
+        const snapshotText = lastNodeAtStart ? convertToMarkdown(lastNodeAtStart).trim() : '';
         const snapshotNodeCount = allNodesAtStart.length;
         
         console.log('[Observer] Snapshot: ' + snapshotNodeCount + ' nodes, ' + snapshotText.length + ' chars of existing text');
@@ -122,6 +143,18 @@ class BrowserController {
           }, 180000); // Increased to 180s (3m) to allow for deep image analysis
         }
 
+        function resetInactivityTimer() {
+          if (window.__copilotInactivityTimer) {
+            clearTimeout(window.__copilotInactivityTimer);
+          }
+          if (hasStarted && !completionSent) {
+            window.__copilotInactivityTimer = setTimeout(() => {
+              console.log('[Observer] Inactivity timer triggered completion (text stopped changing for 3.5s).');
+              sendCompletion();
+            }, 3500); // 3.5s of no text changes
+          }
+        }
+
         function sendCompletion() {
           if (completionSent) return;
           completionSent = true;
@@ -138,6 +171,9 @@ class BrowserController {
           if (window.__copilotStabilityTimer) {
             clearTimeout(window.__copilotStabilityTimer);
           }
+          if (window.__copilotInactivityTimer) {
+            clearTimeout(window.__copilotInactivityTimer);
+          }
         }
         
         function convertToMarkdown(n) {
@@ -147,6 +183,21 @@ class BrowserController {
               md += child.textContent;
             } else if (child.nodeType === 1) { // Element node
               const tag = child.tagName.toLowerCase();
+              if (tag === 'script' || tag === 'style' || tag === 'button' || tag === 'input' || tag === 'textarea') {
+                continue;
+              }
+              if (child.style && (child.style.display === 'none' || child.style.visibility === 'hidden')) {
+                continue;
+              }
+              if (child.getAttribute && child.getAttribute('aria-hidden') === 'true') {
+                continue;
+              }
+              const id = child.id || '';
+              const className = typeof child.className === 'string' ? child.className : '';
+              if (id.includes('fbproxy') || id.includes('shrproxy') || 
+                  className.includes('YOTKvb') || className.includes('WaKIwf')) {
+                continue;
+              }
               if (tag === 'p') {
                 md += convertToMarkdown(child) + '\\n\\n';
               } else if (tag === 'strong' || tag === 'b') {
@@ -202,7 +253,25 @@ class BrowserController {
 
         window.__copilotObserver = new MutationObserver(() => {
           const allNodes = document.querySelectorAll('${selectors.responseArea}');
-          if (allNodes.length === 0) return;
+          console.log('[DEBUG-DOM] observer fired. allNodes count: ' + allNodes.length + '. Body innerText: ' + document.body.innerText.substring(0, 1000).split('\\n').join(' '));
+          if (allNodes.length === 0) {
+            const alternatives = [];
+            document.querySelectorAll('div, section, article').forEach(el => {
+              const className = el.className || '';
+              if (className.includes('font-') || className.includes('message') || className.includes('prose') || className.includes('chat')) {
+                alternatives.push(el);
+              }
+            });
+            if (alternatives.length > 0) {
+              console.log('[DEBUG-DOM] No match for ${selectors.responseArea}. Found alternative containers:');
+              alternatives.forEach((alt, idx) => {
+                if (idx < 15) {
+                  console.log('[DEBUG-DOM] tag=' + alt.tagName + ' class="' + alt.className + '" textPreview="' + alt.textContent.trim().substring(0, 80).split('\\n').join(' ') + '"');
+                }
+              });
+            }
+            return;
+          }
           
           const node = allNodes[allNodes.length - 1];
           if (!node) return;
@@ -216,10 +285,11 @@ class BrowserController {
           
           const currentText = convertToMarkdown(node).trim();
           
-          if (currentText !== lastText) {
+          if (currentNodeIndex >= snapshotNodeCount && currentText !== lastText) {
             if (!hasStarted && currentText.length > 0) {
               hasStarted = true;
               console.log('[Observer] Streaming started! (first text chunk arrived)');
+              resetInactivityTimer();
             }
             
             lastText = currentText;
@@ -227,6 +297,7 @@ class BrowserController {
             if (currentText.length > 0) {
               window.postMessage({ type: '__copilot_sync', data: currentText }, '*');
               resetStabilityTimer();
+              resetInactivityTimer();
             }
           }
 
@@ -312,6 +383,35 @@ class BrowserController {
           
           console.log('[Injected] Created File from base64:', file.size, 'bytes, type:', file.type);
           
+          if ('${provider}' === 'google') {
+            console.log('[Injected] Google Search image upload starting...');
+            // Check if there is a "More input options" button (conversational layout)
+            const moreOptionsBtn = document.querySelector('button[aria-label="More input options"], button.hhGtFb');
+            if (moreOptionsBtn) {
+              console.log('[Injected] Found More input options button, clicking...');
+              moreOptionsBtn.click();
+              // Wait for file input to render
+              for (let i = 0; i < 15; i++) {
+                const fileInput = document.querySelector('input[type="file"]');
+                if (fileInput) break;
+                await new Promise(r => setTimeout(r, 100));
+              }
+            } else {
+              // Fallback to standard Lens camera button
+              const lensBtn = document.querySelector('div[aria-label="Search by image"], div[jscontroller="Ur7rZe"], div.n3nFBe, div.etxtjc');
+              if (lensBtn) {
+                console.log('[Injected] Found Lens camera button, clicking...');
+                lensBtn.click();
+                // Wait for file input to render
+                for (let i = 0; i < 15; i++) {
+                  const fileInput = document.querySelector('input[type="file"]');
+                  if (fileInput) break;
+                  await new Promise(r => setTimeout(r, 100));
+                }
+              }
+            }
+          }
+
           // Strategy 1: Use ChatGPT's specific #upload-photos input
           let fileInput = document.querySelector('#upload-photos') 
             || document.querySelector('[data-testid="upload-photos-input"]')
@@ -323,7 +423,7 @@ class BrowserController {
             dt.items.add(file);
             fileInput.files = dt.files;
             fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('[Injected] Strategy 1: File set on #upload-photos via DataTransfer');
+            console.log('[Injected] Strategy 1: File set via DataTransfer');
             return 'file-input-photos';
           }
           
@@ -379,13 +479,121 @@ class BrowserController {
       return this.injectAndSubmit(provider, promptString);
     }
 
+    if (provider === 'google') {
+      console.log(`[BrowserController] Google Search AI Mode: Waiting to see if page navigates after upload...`);
+      const startUrl = win.webContents.getURL();
+      let navigated = false;
+      for (let i = 0; i < 6; i++) { // Up to 3 seconds
+        await this._sleep(500);
+        if (win.webContents.getURL() !== startUrl) {
+          navigated = true;
+          break;
+        }
+      }
+      
+      if (navigated) {
+        console.log(`[BrowserController] Google navigated. New URL: ${win.webContents.getURL()}`);
+        // Wait 3s to let the new page load
+        await this._sleep(3000);
+
+        // Now inject the text prompt if one was provided
+        if (promptString && promptString.trim().length > 0) {
+          console.log(`[BrowserController] Injecting prompt text "${promptString}" into visual search results...`);
+          
+          // Find the input element on the search results page
+          const textInjected = await win.webContents.executeJavaScript(`
+            (function() {
+              const input = document.querySelector('input[placeholder*="search" i], textarea[placeholder*="search" i], input[aria-label*="search" i], textarea[aria-label*="search" i], input[name="q"], textarea[name="q"]');
+              if (input) {
+                input.focus();
+                input.click();
+                // Clear current value if any
+                if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+                  input.value = '';
+                } else {
+                  input.textContent = '';
+                }
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('[Injected] Google visual search input focused and ready');
+                return true;
+              }
+              console.error('[Injected] Could not find search input on Google visual search results page!');
+              return false;
+            })();
+          `);
+
+          if (textInjected) {
+            // Native typing
+            await win.webContents.insertText(promptString);
+            await this._sleep(500);
+
+            // Submit by pressing Enter key
+            console.log(`[BrowserController] Submitting visual search text prompt via native Enter...`);
+            win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+            win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+            await this._sleep(50);
+            win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+          }
+        }
+      } else {
+        console.log(`[BrowserController] Google did not navigate (inline upload flow). Injecting prompt text into chat...`);
+        // Wait a few seconds for image processing in the current chat view
+        const delays = stateManager.get('screenshotDelays') || {};
+        const googleDelay = (delays.google !== undefined ? delays.google : 4) * 1000;
+        console.log(`[BrowserController] Waiting ${googleDelay}ms for Google image upload to process...`);
+        await this._sleep(googleDelay);
+
+        // Focus search box and insert text prompt
+        await win.webContents.executeJavaScript(`
+          (function() {
+            const textarea = document.querySelector('${selectors.textarea}');
+            if (textarea) {
+              textarea.focus();
+              textarea.click();
+              console.log('[Injected] Inline textarea focused');
+            }
+          })();
+        `);
+        await this._sleep(300);
+
+        if (promptString && promptString.trim().length > 0) {
+          await win.webContents.insertText(promptString);
+          await this._sleep(500);
+        }
+
+        // Submit via native Enter key (which is extremely reliable!)
+        console.log(`[BrowserController] Submitting inline search prompt via native Enter...`);
+        win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+        win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+        await this._sleep(50);
+        win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+
+        // Fallback: click send button if Enter key didn't submit
+        await this._sleep(1500);
+        await win.webContents.executeJavaScript(`
+          (function() {
+            const sendBtn = document.querySelector('${selectors.sendButton}');
+            if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
+              console.log('[Injected] Fallback: Clicking send button...');
+              sendBtn.click();
+            }
+          })();
+        `);
+      }
+      
+      console.log(`[BrowserController] Google screenshot + prompt injection complete.`);
+      return;
+    }
+
     // Step 2: Wait for the image to appear in the upload preview
     const uploadDetected = await this._waitForImageUpload(win, 10000);
     console.log(`[BrowserController] Upload preview detected: ${uploadDetected}`);
 
     // Step 3: Wait briefly for image upload processing
-    console.log(`[BrowserController] Waiting 8s for image upload to process...`);
-    await this._sleep(8000);
+    const delays = stateManager.get('screenshotDelays') || {};
+    const providerDelay = (delays[provider] !== undefined ? delays[provider] : 8) * 1000;
+    console.log(`[BrowserController] Waiting ${providerDelay}ms for image upload to process...`);
+    await this._sleep(providerDelay);
 
     // Step 4: Focus textarea and type text using native keyboard events
     // This is the SAME mechanism that works for text-only injectAndSubmit

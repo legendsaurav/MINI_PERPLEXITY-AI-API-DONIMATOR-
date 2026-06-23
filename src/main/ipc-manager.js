@@ -107,12 +107,22 @@ class IPCManager {
 
     // ── Settings & Auth Handlers (Invokes) ───────────────────────────
     this.safeHandle('get-settings', () => {
-      return { provider: stateManager.get('currentProvider') };
+      return { 
+        provider: stateManager.get('currentProvider'),
+        screenshotDelays: stateManager.get('screenshotDelays')
+      };
     });
 
     this.safeHandle('save-settings', (event, settings) => {
       if (settings.provider) {
-        stateManager.set('currentProvider', settings.provider);
+        const oldProvider = stateManager.get('currentProvider');
+        if (oldProvider !== settings.provider) {
+          stateManager.set('currentProvider', settings.provider);
+          eventBus.emit('providerSwitched', settings.provider);
+        }
+      }
+      if (settings.screenshotDelays) {
+        stateManager.set('screenshotDelays', settings.screenshotDelays);
       }
       return true;
     });
@@ -127,6 +137,214 @@ class IPCManager {
       // Show the hidden window so user can login manually
       hiddenBrowserManager.showForLogin(provider);
       return true;
+    });
+
+    // ── API Key Management Handlers ──────────────────────────────────
+    this.safeHandle('generate-api-key', async (event, data) => {
+      const { username, password, availableModels, conversationID } = data;
+      if (!username || !password) {
+        throw new Error('Username and password are required');
+      }
+
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const path = require('path');
+
+      // Helper to read .env
+      const getEnvVar = (key) => {
+        if (process.env[key]) return process.env[key];
+        try {
+          const envPath = path.join(__dirname, '../../.env');
+          if (fs.existsSync(envPath)) {
+            const content = fs.readFileSync(envPath, 'utf8');
+            for (const line of content.split('\n')) {
+              const trimmed = line.trim();
+              if (trimmed && !trimmed.startsWith('#')) {
+                const parts = trimmed.split('=');
+                if (parts[0].trim() === key) {
+                  return parts.slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+                }
+              }
+            }
+          }
+        } catch (e) {}
+        return null;
+      };
+
+      const sbUrl = getEnvVar('SUPABASE_URL');
+      const sbKey = getEnvVar('SUPABASE_KEY');
+      if (!sbUrl || !sbKey) {
+        throw new Error('Supabase configuration missing in .env');
+      }
+
+      // Generate a new secure API Key
+      const rawKey = 'sk_copilot_' + crypto.randomBytes(24).toString('hex');
+
+      // Insert as a special configuration row in 'conversations' table
+      const headers = {
+        'apikey': sbKey,
+        'Authorization': `Bearer ${sbKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      };
+
+      // Hash password using SHA256
+      const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+
+      const body = {
+        id: rawKey,
+        owner_id: username,
+        title: 'API_KEY',
+        metadata: {
+          type: 'api_key_config',
+          username: username,
+          password_hash: passwordHash,
+          available_models: availableModels || ['*'],
+          conversation_id: conversationID || ('conv_' + crypto.randomUUID()),
+          status: 'active',
+          created_at: new Date().toISOString()
+        }
+      };
+
+      const res = await fetch(`${sbUrl}/rest/v1/conversations`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Failed to save key in Supabase: ${errText}`);
+      }
+
+      return { success: true };
+    });
+
+    this.safeHandle('reveal-api-key', async (event, data) => {
+      const { username, password } = data;
+      if (!username || !password) {
+        throw new Error('Username and password are required');
+      }
+
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const path = require('path');
+
+      const getEnvVar = (key) => {
+        if (process.env[key]) return process.env[key];
+        try {
+          const envPath = path.join(__dirname, '../../.env');
+          if (fs.existsSync(envPath)) {
+            const content = fs.readFileSync(envPath, 'utf8');
+            for (const line of content.split('\n')) {
+              const trimmed = line.trim();
+              if (trimmed && !trimmed.startsWith('#')) {
+                const parts = trimmed.split('=');
+                if (parts[0].trim() === key) {
+                  return parts.slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+                }
+              }
+            }
+          }
+        } catch (e) {}
+        return null;
+      };
+
+      const sbUrl = getEnvVar('SUPABASE_URL');
+      const sbKey = getEnvVar('SUPABASE_KEY');
+      if (!sbUrl || !sbKey) {
+        throw new Error('Supabase configuration missing in .env');
+      }
+
+      const headers = {
+        'apikey': sbKey,
+        'Authorization': `Bearer ${sbKey}`,
+        'Content-Type': 'application/json'
+      };
+
+      // Fetch by owner_id and title = 'API_KEY'
+      const res = await fetch(`${sbUrl}/rest/v1/conversations?owner_id=eq.${encodeURIComponent(username)}&title=eq.API_KEY`, {
+        headers
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Failed to retrieve from Supabase: ${errText}`);
+      }
+
+      const results = await res.json();
+      if (!results || results.length === 0) {
+        throw new Error('No API key found for this user');
+      }
+
+      const keyConfig = results[0];
+      const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+
+      if (keyConfig.metadata.password_hash !== passwordHash) {
+        throw new Error('Authentication failed: Invalid password');
+      }
+
+      return { apiKey: keyConfig.id };
+    });
+
+    this.safeHandle('get-api-keys', async () => {
+      const fs = require('fs');
+      const path = require('path');
+
+      const getEnvVar = (key) => {
+        if (process.env[key]) return process.env[key];
+        try {
+          const envPath = path.join(__dirname, '../../.env');
+          if (fs.existsSync(envPath)) {
+            const content = fs.readFileSync(envPath, 'utf8');
+            for (const line of content.split('\n')) {
+              const trimmed = line.trim();
+              if (trimmed && !trimmed.startsWith('#')) {
+                const parts = trimmed.split('=');
+                if (parts[0].trim() === key) {
+                  return parts.slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+                }
+              }
+            }
+          }
+        } catch (e) {}
+        return null;
+      };
+
+      const sbUrl = getEnvVar('SUPABASE_URL');
+      const sbKey = getEnvVar('SUPABASE_KEY');
+      if (!sbUrl || !sbKey) {
+        return [];
+      }
+
+      const headers = {
+        'apikey': sbKey,
+        'Authorization': `Bearer ${sbKey}`,
+        'Content-Type': 'application/json'
+      };
+
+      const res = await fetch(`${sbUrl}/rest/v1/conversations?title=eq.API_KEY`, {
+        headers
+      });
+
+      if (!res.ok) {
+        return [];
+      }
+
+      const results = await res.json();
+      return results.map(row => {
+        const key = row.id;
+        const masked = key.substring(0, 11) + '...' + key.substring(key.length - 4);
+        return {
+          id: row.id,
+          maskedKey: masked,
+          username: row.owner_id,
+          models: row.metadata.available_models,
+          conversationID: row.metadata.conversation_id,
+          status: row.metadata.status,
+          createdAt: row.metadata.created_at
+        };
+      });
     });
 
     // ── Project CRUD Handlers ────────────────────────────────────────

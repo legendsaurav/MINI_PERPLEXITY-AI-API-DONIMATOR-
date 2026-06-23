@@ -21,6 +21,106 @@
           <input type="radio" name="provider" value="gemini">
           Gemini
         </label>
+        <label>
+          <input type="radio" name="provider" value="claude">
+          Claude
+        </label>
+        <label>
+          <input type="radio" name="provider" value="kimi">
+          Kimi
+        </label>
+        <label>
+          <input type="radio" name="provider" value="deepseek">
+          DeepSeek
+        </label>
+        <label>
+          <input type="radio" name="provider" value="perplexity">
+          Perplexity
+        </label>
+        <label>
+          <input type="radio" name="provider" value="google">
+          Google Search AI (google.com)
+        </label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Screenshot Upload Delay (seconds)</h3>
+      <p class="section-desc">Fine-tune the time each AI model takes to process screenshots before submitting your prompt.</p>
+      <div class="delay-settings-grid">
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">ChatGPT</span>
+            <span class="provider-desc">Needs time to upload and index the image</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="chatgpt" min="1" max="30" step="0.5" value="8">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">Gemini</span>
+            <span class="provider-desc">Processing time for Google Gemini</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="gemini" min="1" max="30" step="0.5" value="5">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">Claude</span>
+            <span class="provider-desc">Processing time for Anthropic Claude</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="claude" min="1" max="30" step="0.5" value="5">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">Kimi</span>
+            <span class="provider-desc">Processing time for Kimi Chat</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="kimi" min="1" max="30" step="0.5" value="5">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">DeepSeek</span>
+            <span class="provider-desc">Processing time for DeepSeek AI</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="deepseek" min="1" max="30" step="0.5" value="5">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">Perplexity</span>
+            <span class="provider-desc">Processing time for Perplexity</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="perplexity" min="1" max="30" step="0.5" value="5">
+            <span class="unit">s</span>
+          </div>
+        </div>
+        <div class="delay-card">
+          <div class="delay-info">
+            <span class="provider-label">Google Search AI</span>
+            <span class="provider-desc">Processing time for inline upload search</span>
+          </div>
+          <div class="input-wrapper">
+            <input type="number" class="delay-input" data-provider="google" min="1" max="30" step="0.5" value="4">
+            <span class="unit">s</span>
+          </div>
+        </div>
+      </div>
+      <div class="save-status-container">
+        <span id="save-status" class="save-status"></span>
       </div>
     </div>
 
@@ -30,6 +130,89 @@
         Checking status...
       </div>
       <button id="login-btn" class="btn">Log In</button>
+    </div>
+
+    <div class="section">
+      <h3>API Key Management</h3>
+      <p class="section-desc">Generate, manage, and securely authenticate to reveal API keys for access to hosted AI models.</p>
+      
+      <div class="apikey-grid">
+        <!-- Generate Section -->
+        <div class="apikey-form-card">
+          <h4>Generate API Key</h4>
+          <div class="form-group">
+            <label for="apikey-username">User Name</label>
+            <input type="text" id="apikey-username" placeholder="e.g. external-user">
+          </div>
+          <div class="form-group">
+            <label for="apikey-password">Password</label>
+            <input type="password" id="apikey-password" placeholder="Choose a secure password">
+          </div>
+          <div class="form-group">
+            <label>Available AI Models</label>
+            <div class="checkbox-group">
+              <label><input type="checkbox" class="model-checkbox" value="gpt-4" checked> GPT-4</label>
+              <label><input type="checkbox" class="model-checkbox" value="gpt-3.5-turbo" checked> GPT-3.5 Turbo</label>
+              <label><input type="checkbox" class="model-checkbox" value="local"> Local Model</label>
+              <label><input type="checkbox" class="model-checkbox" value="default" checked> Default Fallback</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="apikey-convid">Conversation ID (Optional)</label>
+            <input type="text" id="apikey-convid" placeholder="Leave empty for auto-generated UUID">
+          </div>
+          <button id="apikey-generate-btn" class="btn">Generate API Key</button>
+          <div id="generate-msg" class="form-status"></div>
+        </div>
+
+        <!-- Reveal Section -->
+        <div class="apikey-form-card">
+          <h4>Reveal / View API Key</h4>
+          <div class="form-group">
+            <label for="apikey-reveal-username">User Name</label>
+            <input type="text" id="apikey-reveal-username" placeholder="Enter username">
+          </div>
+          <div class="form-group">
+            <label for="apikey-reveal-password">Verify Password</label>
+            <input type="password" id="apikey-reveal-password" placeholder="Enter password to verify">
+          </div>
+          <button id="apikey-reveal-btn" class="btn btn-secondary">Verify & Reveal Key</button>
+          <div id="reveal-msg" class="form-status"></div>
+          
+          <div class="revealed-key-container" id="revealed-key-container" style="display:none;">
+            <label>Your API Key</label>
+            <div class="key-display-wrapper">
+              <input type="text" id="revealed-key-input" readonly>
+              <button id="apikey-copy-btn" class="btn btn-mini">Copy</button>
+            </div>
+            <p class="key-hint">Copy and secure this key now. It will not be shown again until you re-authenticate.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Keys list -->
+      <div class="keys-list-container">
+        <h4>Stored Keys (Supabase)</h4>
+        <div class="table-wrapper">
+          <table class="keys-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Masked Key</th>
+                <th>Models</th>
+                <th>Conversation ID</th>
+                <th>Status</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody id="keys-table-body">
+              <tr>
+                <td colspan="6" class="table-empty">Loading keys from Supabase...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 

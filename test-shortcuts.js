@@ -78,8 +78,9 @@ async function runTests() {
   assert(registeredShortcuts.includes('CommandOrControl+Shift+N'), 'Ctrl+Shift+N is registered');
   assert(registeredShortcuts.includes('CommandOrControl+Shift+H'), 'Ctrl+Shift+H is registered');
   assert(registeredShortcuts.includes('CommandOrControl+Alt+R'), 'Ctrl+Alt+R is registered (was Shift+R)');
+  assert(registeredShortcuts.includes('CommandOrControl+Shift+M'), 'Ctrl+Shift+M is registered');
   assert(!registeredShortcuts.includes('Escape'), 'Escape is NOT registered globally');
-  assert(registeredShortcuts.length === 7, `Exactly 7 shortcuts registered (got ${registeredShortcuts.length})`);
+  assert(registeredShortcuts.length === 8, `Exactly 8 shortcuts registered (got ${registeredShortcuts.length})`);
   console.log('');
 
   // ── Test 2: Screenshot Capture Chain ──────────────────────

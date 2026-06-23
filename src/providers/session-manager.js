@@ -41,6 +41,26 @@ class SessionManager {
         this.setAuthState(provider, false);
         return false;
       }
+      if (provider === 'kimi' && !url.includes('kimi.moonshot.cn')) {
+        console.log(`[SessionManager] Not on kimi.moonshot.cn (currently: ${new URL(url).hostname}). Not authenticated.`);
+        this.setAuthState(provider, false);
+        return false;
+      }
+      if (provider === 'deepseek' && !url.includes('deepseek.com')) {
+        console.log(`[SessionManager] Not on deepseek.com (currently: ${new URL(url).hostname}). Not authenticated.`);
+        this.setAuthState(provider, false);
+        return false;
+      }
+      if (provider === 'perplexity' && !url.includes('perplexity.ai')) {
+        console.log(`[SessionManager] Not on perplexity.ai (currently: ${new URL(url).hostname}). Not authenticated.`);
+        this.setAuthState(provider, false);
+        return false;
+      }
+      if (provider === 'google' && !url.includes('google.com')) {
+        console.log(`[SessionManager] Not on google.com (currently: ${new URL(url).hostname}). Not authenticated.`);
+        this.setAuthState(provider, false);
+        return false;
+      }
 
       // Now we're on the correct domain — check for login buttons
       let isAuthenticated = true;
@@ -58,6 +78,17 @@ class SessionManager {
       } else if (provider === 'claude') {
         // claude redirects to /login
         isAuthenticated = !url.includes('/login');
+      } else if (provider === 'kimi') {
+        // kimi redirects to homepage or login if not logged in
+        isAuthenticated = !url.includes('/login') && !url.includes('/sign');
+      } else if (provider === 'deepseek') {
+        // deepseek redirects to /sign-in or shows sign-in button
+        isAuthenticated = !url.includes('/sign-in') && !url.includes('/login');
+      } else if (provider === 'perplexity') {
+        // perplexity redirects to /login
+        isAuthenticated = !url.includes('/login') && !url.includes('/signin');
+      } else if (provider === 'google') {
+        isAuthenticated = true;
       }
 
       this.setAuthState(provider, isAuthenticated);

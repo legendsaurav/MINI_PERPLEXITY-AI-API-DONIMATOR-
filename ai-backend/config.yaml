@@ -31,3 +31,19 @@ providers:
     base_url: "https://claude.ai"
     login_url: "https://claude.ai/login"
     startup_timeout_secs: 30
+  kimi:
+    base_url: "https://kimi.moonshot.cn"
+    login_url: "https://kimi.moonshot.cn"
+    startup_timeout_secs: 30
+  deepseek:
+    base_url: "https://chat.deepseek.com"
+    login_url: "https://chat.deepseek.com/sign-in"
+    startup_timeout_secs: 30
+  perplexity:
+    base_url: "https://www.perplexity.ai"
+    login_url: "https://www.perplexity.ai"
+    startup_timeout_secs: 30
+  google:
+    base_url: "https://www.google.com/search?udm=50&aep=11"
+    login_url: "https://accounts.google.com"
+    startup_timeout_secs: 30

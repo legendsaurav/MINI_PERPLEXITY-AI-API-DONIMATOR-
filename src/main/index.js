@@ -463,14 +463,14 @@ function setupAIPipeline() {
       }
       
       const currentUrl = win.webContents.getURL();
-      if (!currentUrl.includes('chatgpt.com') && currentProvider === 'chatgpt') {
-        throw new Error(`Browser is not on ChatGPT. Please log in first via tray menu → Re-Login.`);
-      }
-      if (!currentUrl.includes('gemini.google.com') && currentProvider === 'gemini') {
-        throw new Error(`Browser is not on Gemini. Please log in first via tray menu → Re-Login.`);
-      }
-      if (!currentUrl.includes('claude.ai') && currentProvider === 'claude') {
-        throw new Error(`Browser is not on Claude. Please log in first via tray menu → Re-Login.`);
+      const capabilities = require('../providers/provider-capabilities');
+      const caps = capabilities.getCapabilities(currentProvider);
+      if (caps && caps.baseUrl) {
+        const domain = new URL(caps.baseUrl).hostname.replace('www.', '');
+        if (!currentUrl.includes(domain)) {
+          const provName = currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1);
+          throw new Error(`Browser is not on ${provName}. Please log in first via tray menu → Re-Login.`);
+        }
       }
 
       await browserProviderInstance.sendPrompt(contextObject);
@@ -575,7 +575,9 @@ function setupAIPipeline() {
       if (project && project.conversation_reference) {
         const win = hiddenBrowserManager.getWindow(currentProvider);
         if (win && !win.isDestroyed()) {
-          const baseUrl = currentProvider === 'chatgpt' ? 'https://chatgpt.com' : 'https://gemini.google.com';
+          const capabilities = require('../providers/provider-capabilities');
+          const caps = capabilities.getCapabilities(currentProvider);
+          const baseUrl = caps ? caps.baseUrl : 'https://chatgpt.com';
           const fullUrl = baseUrl + project.conversation_reference;
           await win.webContents.loadURL(fullUrl);
           console.log(`[Project] Opened conversation: ${fullUrl}`);
@@ -740,17 +742,19 @@ app.whenReady().then(async () => {
   console.log('[Startup] Now running AI connection checkpoints...');
   console.log('');
 
-  // Run the 3-checkpoint connection flow
-  const checkpointsPassed = await runConnectionCheckpoints();
-
-  // Setup the AI pipeline REGARDLESS of checkpoint result
+  // Setup the AI pipeline first so shortcuts and UI listeners are fully responsive immediately
   setupAIPipeline();
 
-  if (!checkpointsPassed) {
-    console.log('[Startup] ⚠ Checkpoints did not fully pass.');
-    console.log('[Startup] The pipeline is ready — once you log in, shortcuts will work.');
-    console.log('[Startup] Use tray menu → Re-Login to try again.');
-  }
+  // Run the 3-checkpoint connection flow asynchronously in the background
+  runConnectionCheckpoints().then(checkpointsPassed => {
+    if (!checkpointsPassed) {
+      console.log('[Startup] ⚠ Checkpoints did not fully pass.');
+      console.log('[Startup] The pipeline is ready — once you log in, shortcuts will work.');
+      console.log('[Startup] Use tray menu → Re-Login to try again.');
+    }
+  }).catch(err => {
+    console.error('[Startup] Checkpoints encountered an error:', err.message);
+  });
 
   console.log('[Startup] ========================================');
   console.log('[Startup] Shortcuts:');
@@ -885,6 +889,23 @@ const debugServer = http.createServer(async (req, res) => {
             dropzoneInfo.push({ tag: d.tagName, classes: d.className.substring(0, 100), id: d.id, testid: d.getAttribute('data-testid') });
           });
           
+          // Look for any elements containing "hi" or potential response messages
+          const elementsWithText = [];
+          document.querySelectorAll('div, p, span, pre, code').forEach(el => {
+            const txt = el.textContent.trim();
+            if (txt.length > 0 && txt.length < 500) {
+              if (txt.toLowerCase() === 'hi' || txt.includes('help') || txt.includes('how can') || txt.includes('hello')) {
+                elementsWithText.push({
+                  tag: el.tagName,
+                  classes: el.className,
+                  text: txt.substring(0, 100),
+                  parentTag: el.parentElement ? el.parentElement.tagName : null,
+                  parentClasses: el.parentElement ? el.parentElement.className : null
+                });
+              }
+            }
+          });
+
           return {
             fileInputCount: fileInputs.length,
             fileInputs: Array.from(fileInputs).map(fi => ({
@@ -897,16 +918,22 @@ const debugServer = http.createServer(async (req, res) => {
             })),
             uploadButtons,
             dropzones: dropzoneInfo,
-            composerArea: !!document.querySelector('#prompt-textarea'),
-            attachButton: !!document.querySelector('button[aria-label*="ttach"]')
+            composerArea: !!document.querySelector('#prompt-textarea') || !!document.querySelector('[contenteditable="true"]'),
+            attachButton: !!document.querySelector('button[aria-label*="ttach"]'),
+            elementsWithText: elementsWithText.slice(0, 20)
           };
         })();
       `);
       res.end(JSON.stringify({ ok: true, domInfo }, null, 2));
 
+    } else if (action === '/debug/eval') {
+      const code = url.searchParams.get('code');
+      console.log(`[DEBUG-HTTP] Eval: ${code}`);
+      const result = await eval(code);
+      res.end(JSON.stringify({ ok: true, result }));
     } else {
       res.statusCode = 404;
-      res.end(JSON.stringify({ error: 'Unknown action. Use /trigger/screenshot, /trigger/submit, /trigger/screenshot-and-submit, /debug/dom, or /status' }));
+      res.end(JSON.stringify({ error: 'Unknown action. Use /trigger/screenshot, /trigger/submit, /trigger/screenshot-and-submit, /debug/dom, /debug/eval, or /status' }));
     }
   } catch (err) {
     res.statusCode = 500;

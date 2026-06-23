@@ -107,9 +107,9 @@ class ShortcutsModule {
     // Ctrl+Shift+M → Toggle AI Model
     const rModel = globalShortcut.register('CommandOrControl+Shift+M', () => {
       console.log('[Shortcut] Ctrl+Shift+M pressed → Toggle AI Model');
-      const providers = ['chatgpt', 'claude', 'gemini'];
+      const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek', 'perplexity', 'google'];
       const current = require('./state-manager').get('currentProvider') || 'chatgpt';
-      const nextIndex = (providers.indexOf(current) + 1) % providers.length;
+      const nextIndex = providers.indexOf(current) !== -1 ? (providers.indexOf(current) + 1) % providers.length : 0;
       const nextProvider = providers[nextIndex];
       require('./state-manager').set('currentProvider', nextProvider);
       console.log(`[Shortcut] AI Model switched to: ${nextProvider}`);

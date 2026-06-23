@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('copilotAPI', {
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   loginProvider: (provider) => ipcRenderer.invoke('login-provider', provider),
   getAuthStatus: () => ipcRenderer.invoke('get-auth-status'),
+  generateApiKey: (data) => ipcRenderer.invoke('generate-api-key', data),
+  revealApiKey: (data) => ipcRenderer.invoke('reveal-api-key', data),
+  getApiKeys: () => ipcRenderer.invoke('get-api-keys'),
 
   // ── Window controls ─────────────────────────────────────────────────
   toggleOverlay: () => ipcRenderer.send('toggle-overlay'),

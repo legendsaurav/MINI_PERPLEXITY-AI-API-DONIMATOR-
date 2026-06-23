@@ -88,8 +88,99 @@ Instead of using REST APIs, this app manages "hidden browsers" (Electron Browser
 
 ---
 
+## 🔑 API Key Gateway & Authentication System
+
+The Copilot includes a secure, Supabase-backed API Key management and gateway authentication system. The backend gateway (`backend-gateway`) acts as a secure reverse proxy that authenticates incoming external requests, maintains conversation context, and enforces model access permissions.
+
+### ⚙️ How It Works
+
+```mermaid
+sequenceDiagram
+    participant External Client
+    participant Backend Gateway (Go)
+    participant Supabase DB
+    participant Mock/Downstream LLM
+
+    External Client->>Backend Gateway (Go): POST /v1/chat/completions (Header: Authorization: Bearer sk_copilot_...)
+    Backend Gateway (Go)->>Supabase DB: Query key in 'conversations' where id = key
+    Supabase DB-->>Backend Gateway (Go): Return key metadata config
+    Note over Backend Gateway (Go): Validate status (active)<br/>Validate requested model<br/>Enforce or inject Conversation ID
+    alt Validation Failed
+        Backend Gateway (Go)-->>External Client: Return 401 Unauthorized or 403 Forbidden
+    else Validation Successful
+        Backend Gateway (Go)->>Supabase DB: Create conv/messages & save user input
+        Backend Gateway (Go)->>Mock/Downstream LLM: Forward request with prompt context
+        Mock/Downstream LLM-->>Backend Gateway (Go): Return chat completion
+        Backend Gateway (Go)->>Supabase DB: Save assistant response in messages
+        Backend Gateway (Go)-->>External Client: Return 200 OK Response
+    end
+```
+
+### 🔐 API Key Management (Electron UI)
+
+API keys are managed directly from the **Settings** screen inside the Electron app. 
+
+1. **Generation:** 
+   - Generates a cryptographically secure key (`sk_copilot_...`).
+   - Securely stores the key as a configuration record in the remote Supabase database `conversations` table, marked with `type: "api_key_config"` inside the `metadata` JSONB column.
+   - Saves username, password hash (SHA-256), allowed models, and a unique linked conversation ID.
+2. **Access Control (Verify & Reveal):**
+   - For security, generated keys are never shown in plain text in lists.
+   - To view/reveal the plain API key, the user must authenticate by providing their username and verification password. The application verifies this against the hashed password stored in Supabase.
+3. **Key Revocation:**
+   - Keys can be set to `"active"` or `"inactive"`. Inactive keys are immediately rejected by the gateway.
+
+### 🚀 Backend Gateway Setup
+
+1. **Compile & Build the Gateway:**
+   ```bash
+   cd backend-gateway
+   go build ./cmd/gateway
+   ```
+2. **Configure Environment Variables:**
+   Create or update the `.env` file in the root directory:
+   ```env
+   SUPABASE_URL=https://cowmafailphyzkvodjdl.supabase.co
+   SUPABASE_KEY=your-supabase-service-role-key
+   PORT=8080
+   ```
+3. **Run the Server:**
+   ```bash
+   go run cmd/gateway/main.go
+   ```
+
+### 📡 Gateway API Validation Rules
+
+When an external client requests the `/v1/chat/completions` endpoint:
+- **Authentication:** Must provide an `Authorization: Bearer sk_copilot_...` header or an `x-api-key` header.
+- **Status Check:** The key must have `status: "active"`.
+- **Model Authorization:** The gateway compares the requested `model` field in the JSON body with the allowed models list (`available_models` in key metadata). Supports wildcard `*` to allow all models. Mismatched models return `403 Forbidden`.
+- **Context Linkage (Conversation ID):**
+  - If `conversation_id` is omitted in the JSON body, the gateway automatically injects the linked `conversation_id` from the key's metadata configuration.
+  - If `conversation_id` is provided in the JSON body, it **must match** the linked `conversation_id` for that key, otherwise the gateway returns `403 Forbidden` to enforce security boundaries.
+
+### 🧪 Automated Integration Verification
+
+We have provided a complete integration test suite to verify the authentication system end-to-end against remote Supabase keys without needing upstream LLM accounts.
+
+Run the test suite:
+```bash
+node test-api-key-bot.js
+```
+The test suite:
+1. Dynamically provisions mock active, inactive, and wildcard keys in remote Supabase.
+2. Boots up a downstream mock LLM server on port `8081`.
+3. Runs the Go gateway local server on port `8080` configured to proxy to the mock LLM server.
+4. Executes test cases asserting:
+   - Rejected fake/missing keys (`401 Unauthorized`)
+   - Rejected inactive keys (`401 Unauthorized`)
+   - Model access filters (`403 Forbidden`)
+   - Conversation ID context enforcement (`403 Forbidden`)
+   - Successful proxying and message record verification inside the remote Supabase `messages` table (`200 OK`)
+5. Tears down test keys and messages to keep database clean.
+
+---
+
 ## ⚖️ License
 
 [MIT License](LICENSE)
-"# MINI_PERPLEXITY-AI-API-DONIMATOR-" 
-"# MINI_PERPLEXITY-AI-API-DONIMATOR-" 

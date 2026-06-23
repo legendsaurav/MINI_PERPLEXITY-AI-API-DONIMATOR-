@@ -43,13 +43,15 @@ func (s *ChatService) Completions(ctx context.Context, req *ports.ChatRequest) (
 	// 1. Ensure conversation exists
 	_, err := s.convRepo.GetByID(ctx, req.ConversationID)
 	if err != nil {
-		s.convRepo.Create(ctx, &domain.Conversation{
+		if createErr := s.convRepo.Create(ctx, &domain.Conversation{
 			ID:        req.ConversationID,
 			OwnerID:   req.UserID,
 			Title:     "New Conversation",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-		})
+		}); createErr != nil {
+			fmt.Printf("[ChatService] Error creating conversation: %v\n", createErr)
+		}
 	}
 
 	// 2. Save user message
@@ -61,7 +63,9 @@ func (s *ChatService) Completions(ctx context.Context, req *ports.ChatRequest) (
 		Model:          req.Model,
 		CreatedAt:      time.Now(),
 	}
-	s.msgRepo.AddMessage(ctx, &userMsg)
+	if addErr := s.msgRepo.AddMessage(ctx, &userMsg); addErr != nil {
+		fmt.Printf("[ChatService] Error saving user message: %v\n", addErr)
+	}
 
 	// 3. Build full prompt with history
 	fullPrompt, err := s.contextEngine.BuildPrompt(ctx, req.ConversationID, userMsg)
@@ -129,7 +133,9 @@ func (s *ChatService) Completions(ctx context.Context, req *ports.ChatRequest) (
 		Model:          req.Model,
 		CreatedAt:      time.Now(),
 	}
-	s.msgRepo.AddMessage(ctx, &assistantMsg)
+	if addErr := s.msgRepo.AddMessage(ctx, &assistantMsg); addErr != nil {
+		fmt.Printf("[ChatService] Error saving assistant message: %v\n", addErr)
+	}
 
 	return &ports.ChatResponse{
 		ID:      "msg_" + time.Now().Format("20060102150405"),
@@ -150,13 +156,15 @@ func (s *ChatService) StreamCompletions(ctx context.Context, req *ports.ChatRequ
 		// 1. Ensure conversation exists
 		_, err := s.convRepo.GetByID(ctx, req.ConversationID)
 		if err != nil {
-			s.convRepo.Create(ctx, &domain.Conversation{
+			if createErr := s.convRepo.Create(ctx, &domain.Conversation{
 				ID:        req.ConversationID,
 				OwnerID:   req.UserID,
 				Title:     "New Conversation",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
-			})
+			}); createErr != nil {
+				fmt.Printf("[ChatService] Error creating stream conversation: %v\n", createErr)
+			}
 		}
 
 		// 2. Save user message
@@ -168,7 +176,9 @@ func (s *ChatService) StreamCompletions(ctx context.Context, req *ports.ChatRequ
 			Model:          req.Model,
 			CreatedAt:      time.Now(),
 		}
-		s.msgRepo.AddMessage(ctx, &userMsg)
+		if addErr := s.msgRepo.AddMessage(ctx, &userMsg); addErr != nil {
+			fmt.Printf("[ChatService] Error saving stream user message: %v\n", addErr)
+		}
 
 		// 3. Build full prompt with history
 		fullPrompt, err := s.contextEngine.BuildPrompt(ctx, req.ConversationID, userMsg)
@@ -266,7 +276,9 @@ func (s *ChatService) StreamCompletions(ctx context.Context, req *ports.ChatRequ
 			Model:          req.Model,
 			CreatedAt:      time.Now(),
 		}
-		s.msgRepo.AddMessage(context.Background(), &assistantMsg)
+		if addErr := s.msgRepo.AddMessage(context.Background(), &assistantMsg); addErr != nil {
+			fmt.Printf("[ChatService] Error saving stream assistant message: %v\n", addErr)
+		}
 	}()
 
 	return chunkChan, errChan

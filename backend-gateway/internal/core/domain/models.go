@@ -14,7 +14,7 @@ type Conversation struct {
 }
 
 type Message struct {
-	ID             string    `json:"id"`
+	ID             string    `json:"id,omitempty"`
 	ConversationID string    `json:"conversation_id"`
 	Role           string    `json:"role"`
 	Content        string    `json:"content"`
@@ -25,7 +25,7 @@ type Message struct {
 }
 
 type Memory struct {
-	ID             string    `json:"id"`
+	ID             string    `json:"id,omitempty"`
 	ConversationID string    `json:"conversation_id"`
 	Content        string    `json:"content"`
 	Embedding      []float32 `json:"embedding"`
