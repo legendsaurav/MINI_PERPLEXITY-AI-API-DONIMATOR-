@@ -12,6 +12,8 @@ class ContextEngine {
   constructor() {
     this.frozenContext = null;
     this.pendingScreenshot = null; // Pre-captured screenshot
+    this.pendingImageMeta = null;  // { width, height, displayIndex } of pendingScreenshot
+    this.pendingFiles = null;      // Files attached via the file-attach shortcut
   }
 
   /**
@@ -20,9 +22,10 @@ class ContextEngine {
    * so the input window itself doesn't appear in the screenshot.
    * @param {string} base64 The screenshot as a base64 data URL
    */
-  setPendingScreenshot(base64) {
+  setPendingScreenshot(base64, meta = null) {
     this.pendingScreenshot = base64;
-    console.log('[ContextEngine] Pending screenshot stored.');
+    this.pendingImageMeta = meta; // { width, height, displayIndex } or null
+    console.log('[ContextEngine] Pending screenshot stored.', meta ? `(${meta.width}x${meta.height}, display ${meta.displayIndex})` : '');
   }
 
   /**
@@ -30,6 +33,20 @@ class ContextEngine {
    */
   clearPendingScreenshot() {
     this.pendingScreenshot = null;
+    this.pendingImageMeta = null;
+  }
+
+  /**
+   * Store files (parsed by file-attachment.js) to attach to the next request.
+   * @param {Array<object>} files
+   */
+  setPendingFiles(files) {
+    this.pendingFiles = (Array.isArray(files) && files.length) ? files : null;
+    console.log(`[ContextEngine] Pending files stored: ${this.pendingFiles ? this.pendingFiles.length : 0}`);
+  }
+
+  clearPendingFiles() {
+    this.pendingFiles = null;
   }
 
   /**
@@ -40,20 +57,32 @@ class ContextEngine {
   async buildContext(question) {
     const isFrozen = stateManager.get('contextFreeze');
 
+    // Consume any pending attached files (used in both fresh & frozen paths).
+    let attachedFiles = null;
+    if (this.pendingFiles) {
+      attachedFiles = this.pendingFiles;
+      this.pendingFiles = null;
+    }
+
     // If we are in Context Freeze Mode and have a frozen context, reuse it (update timestamp and question)
     if (isFrozen && this.frozenContext) {
       return {
         ...this.frozenContext,
         timestamp: new Date().toISOString(),
-        question: question
+        question: question,
+        // Newly attached files (if any) override; otherwise keep the frozen set.
+        attached_files: attachedFiles || this.frozenContext.attached_files || null
       };
     }
 
     // Use pending screenshot if available, otherwise skip (text-only mode)
     let imageBase64;
+    let imageMeta = null;
     if (this.pendingScreenshot) {
       imageBase64 = this.pendingScreenshot;
+      imageMeta = this.pendingImageMeta;
       this.pendingScreenshot = null; // Consume it
+      this.pendingImageMeta = null;
       console.log('[ContextEngine] Using pre-captured screenshot.');
     } else {
       imageBase64 = null; // No screenshot — text-only mode
@@ -75,7 +104,9 @@ class ContextEngine {
       question: question,
       selected_text: "",
       ocr_text: "",
-      image_base64: imageBase64
+      image_base64: imageBase64,
+      image_meta: imageMeta,
+      attached_files: attachedFiles
     };
 
     // If freeze is enabled now, store this context

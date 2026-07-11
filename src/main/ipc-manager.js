@@ -57,6 +57,10 @@ class IPCManager {
       eventBus.emit('userQuestionSubmitted', text);
     });
 
+    ipcMain.on('stop-agent', () => {
+      eventBus.emit('stopAgentRequested');
+    });
+
     ipcMain.on('cancel-request', () => {
       const currentRequest = stateManager.get('currentRequest');
       if (currentRequest) {
@@ -88,11 +92,40 @@ class IPCManager {
       eventBus.emit('toggleProjectsRequested');
     });
 
+    ipcMain.on('notify-voice-state', (event, state) => {
+      eventBus.emit('voiceStateChanged', state);
+    });
+
+    ipcMain.on('trigger-pointer', (event, data) => {
+      eventBus.emit('triggerPointerRequested', data);
+    });
+
+    ipcMain.on('toggle-cursor', (event, hide) => {
+      eventBus.emit('toggleCursorRequested', hide);
+    });
+
+    ipcMain.on('toggle-model-picker', () => {
+      eventBus.emit('toggleModelPickerRequested');
+    });
+
     // ── Main -> Overlay (via Event Bus subscriptions) ────────────────
     eventBus.on('streamStart', (data) => this.sendToOverlay('stream-start', data));
     eventBus.on('streamChunk', (data) => this.sendToOverlay('stream-chunk', data));
-    eventBus.on('streamFinished', (data) => this.sendToOverlay('stream-end', data));
-    eventBus.on('streamError', (err) => this.sendToOverlay('stream-error', err));
+    eventBus.on('streamFinished', (data) => {
+      this.sendToOverlay('stream-end', data);
+      eventBus.emit('voiceStateChanged', 'idle');
+    });
+    eventBus.on('streamError', (err) => {
+      this.sendToOverlay('stream-error', err);
+      eventBus.emit('voiceStateChanged', 'idle');
+    });
+    eventBus.on('userRequestCancelled', () => {
+      eventBus.emit('voiceStateChanged', 'idle');
+    });
+    eventBus.on('voiceStateChanged', (state) => this.sendToOverlay('voice-state-changed', state));
+    eventBus.on('modeSelected', (mode) => this.sendToOverlay('mode-selected', mode));
+    eventBus.on('modelSwitchStarted', (data) => this.sendToOverlay('model-switch-started', data));
+    eventBus.on('modelSwitchReady', (data) => this.sendToOverlay('model-switch-ready', data));
 
     // ── Project updates to UI ────────────────────────────────────────
     eventBus.on('projectChanged', (projectData) => {
@@ -130,6 +163,34 @@ class IPCManager {
     this.safeHandle('get-auth-status', async (event, provider) => {
       const sessionManager = require('../providers/session-manager');
       return sessionManager.isAuthenticated(provider);
+    });
+
+    // ── Model picker: list models + switch ───────────────────────────
+    this.safeHandle('get-model-list', () => {
+      const capabilities = require('../providers/provider-capabilities');
+      const sessionManager = require('../providers/session-manager');
+      const current = stateManager.get('currentProvider') || 'chatgpt';
+      const names = {
+        chatgpt: 'ChatGPT', gemini: 'Gemini', claude: 'Claude', kimi: 'Kimi',
+        deepseek: 'DeepSeek', perplexity: 'Perplexity', google: 'Google AI'
+      };
+      const ids = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek', 'perplexity', 'google'];
+      return ids.map((id) => ({
+        id,
+        name: names[id] || id,
+        current: id === current,
+        loggedIn: !!sessionManager.isAuthenticated(id),
+        supportsImages: capabilities.hasCapability(id, 'supportsImages'),
+      }));
+    });
+
+    this.safeHandle('select-model', (event, id) => {
+      const current = stateManager.get('currentProvider') || 'chatgpt';
+      if (!id || id === current) return false;
+      stateManager.set('currentProvider', id);
+      // openInput: true → open the input bar once the new model is ready.
+      eventBus.emit('providerSwitched', id, { openInput: true });
+      return true;
     });
 
     this.safeHandle('login-provider', (event, provider) => {

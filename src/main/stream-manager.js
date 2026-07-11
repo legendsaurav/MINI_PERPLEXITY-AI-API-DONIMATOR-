@@ -1,4 +1,5 @@
 const eventBus = require('./event-bus');
+const stateManager = require('./state-manager');
 
 /**
  * Stream Manager
@@ -70,6 +71,7 @@ class StreamManager {
     this.isStreaming = false;
     const errorMsg = (typeof error === 'string') ? error : (error && error.message) || 'Stream error';
     console.error('[StreamManager] Error:', errorMsg);
+    stateManager.set('currentRequest', null);
     eventBus.emit('streamError', { error: errorMsg });
   }
 

@@ -73,6 +73,52 @@ class BrowserProvider extends AIProvider {
     const promptString = contextObject.question;
     const imageBase64 = contextObject.image_base64 || null;
     
+    const win = hiddenBrowserManager.getWindow(this.providerName);
+    if (win) {
+      const stateManager = require('../main/state-manager');
+      const constantUrl = stateManager.getConstantUrl(this.providerName);
+      if (constantUrl) {
+        const currentUrl = win.webContents.getURL();
+        if (currentUrl !== constantUrl) {
+          console.log(`[BrowserProvider] Navigating to constant conversation URL: ${constantUrl}`);
+          try {
+            await win.loadURL(constantUrl);
+            await new Promise(resolve => {
+              win.webContents.once('did-finish-load', resolve);
+              win.webContents.once('did-fail-load', resolve);
+              setTimeout(resolve, 6000);
+            });
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          } catch (err) {
+            console.error(`[BrowserProvider] Navigation to constant URL failed: ${err.message}`);
+          }
+        }
+      }
+
+      // Check if prompt input elements are present on the loaded page.
+      // If not, it means the navigation failed, timed out, or the page is showing an error.
+      const selectors = require('./selector-manager').getSelectors(this.providerName);
+      let hasInput = await win.webContents.executeJavaScript(`
+        !!(document.querySelector('${selectors.textarea}') || 
+           document.querySelector('#prompt-textarea') || 
+           document.querySelector('[contenteditable="true"]'))
+      `).catch(() => false);
+
+      if (!hasInput) {
+        console.warn(`[BrowserProvider] No valid prompt input element found on the current page. Recovering to provider base URL...`);
+        stateManager.setConstantUrl(this.providerName, null);
+        const caps = require('./provider-capabilities').getCapabilities(this.providerName);
+        console.log(`[BrowserProvider] Loading base URL: ${caps.baseUrl}`);
+        await win.loadURL(caps.baseUrl).catch(err => console.error(`[BrowserProvider] Failed to load base URL: ${err.message}`));
+        await new Promise(resolve => {
+          win.webContents.once('did-finish-load', resolve);
+          win.webContents.once('did-fail-load', resolve);
+          setTimeout(resolve, 8000);
+        });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
     // Attach observer BEFORE submitting so we don't miss chunks
     await browserController.attachStreamObserver(this.providerName);
     

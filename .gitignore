@@ -13,6 +13,12 @@ node_modules_old/
 .env.local
 .env.*.local
 
+# Generated gateway keys / local secrets (plaintext bearer tokens)
+provider-keys.local.json
+
+# Temporary gateway test config
+test-config.json
+
 # Logs
 logs/
 *.log

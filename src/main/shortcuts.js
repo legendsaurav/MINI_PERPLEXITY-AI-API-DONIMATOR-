@@ -8,10 +8,12 @@ const captureModule = require('./capture');
  * 
  * Ctrl+Shift+Q     → Text-only question (no screenshot)
  * Ctrl+Shift+Space → Screenshot + question (captures screen first)
+ * Ctrl+Shift+F     → Attach files (file picker) + describe your need
  * Ctrl+Shift+O     → Toggle overlay visibility
  * Ctrl+Shift+J     → Toggle projects panel
  * Ctrl+Shift+N     → New project
  * Ctrl+Shift+H     → Conversation history
+ * Ctrl+Shift+M     → Model picker (select AI model from UI)
  * Ctrl+Alt+R       → Reload provider context
  * 
  * NOTE: Escape is handled per-window (overlay, input) to avoid
@@ -32,10 +34,10 @@ class ShortcutsModule {
         // Wait for OS to repaint and hide windows (500ms is safe for most machines)
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        const screenshot = await captureModule.captureFullScreen();
-        
-        if (screenshot) {
-          contextEngine.setPendingScreenshot(screenshot);
+        const cap = await captureModule.captureFullScreenDetailed();
+
+        if (cap && cap.dataURL) {
+          contextEngine.setPendingScreenshot(cap.dataURL, { width: cap.width, height: cap.height, displayIndex: cap.displayIndex });
           screenshotCaptured = true;
           console.log('[Shortcut] Screenshot captured and stored.');
         } else {
@@ -104,18 +106,21 @@ class ShortcutsModule {
     });
     console.log('[Shortcuts] Ctrl+Alt+R registered:', rReload);
 
-    // Ctrl+Shift+M → Toggle AI Model
+    // Ctrl+Shift+M → Open the model picker (select a model from the UI)
     const rModel = globalShortcut.register('CommandOrControl+Shift+M', () => {
-      console.log('[Shortcut] Ctrl+Shift+M pressed → Toggle AI Model');
-      const providers = ['chatgpt', 'gemini', 'claude', 'kimi', 'deepseek', 'perplexity', 'google'];
-      const current = require('./state-manager').get('currentProvider') || 'chatgpt';
-      const nextIndex = providers.indexOf(current) !== -1 ? (providers.indexOf(current) + 1) % providers.length : 0;
-      const nextProvider = providers[nextIndex];
-      require('./state-manager').set('currentProvider', nextProvider);
-      console.log(`[Shortcut] AI Model switched to: ${nextProvider}`);
-      eventBus.emit('providerSwitched', nextProvider);
+      console.log('[Shortcut] Ctrl+Shift+M pressed → Toggle model picker');
+      eventBus.emit('toggleModelPickerRequested');
     });
     console.log('[Shortcuts] Ctrl+Shift+M registered:', rModel);
+
+    // Ctrl+Shift+F → Attach files (opens a file picker, then the input bar)
+    const rFiles = globalShortcut.register('CommandOrControl+Shift+F', () => {
+      console.log('[Shortcut] Ctrl+Shift+F pressed → Attach files');
+      eventBus.emit('attachFilesRequested');
+    });
+    console.log('[Shortcuts] Ctrl+Shift+F registered:', rFiles);
+
+
 
     // NOTE: Escape is intentionally NOT registered as a global shortcut.
     // Global Escape steals the key from every application on the system.

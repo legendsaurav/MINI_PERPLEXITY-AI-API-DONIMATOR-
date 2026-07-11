@@ -21,6 +21,11 @@ const mockElectron = {
       thumbnail: { toDataURL: () => 'data:image/png;base64,FAKE_SCREENSHOT_DATA_HERE' }
     }])
   },
+  screen: {
+    getAllDisplays: () => ([{
+      bounds: { x: 0, y: 0, width: 1920, height: 1080 }
+    }])
+  },
   app: { getPath: () => '/tmp' },
   BrowserWindow: class { constructor() {} },
   ipcMain: { on: () => {}, handle: () => {}, removeHandler: () => {} },

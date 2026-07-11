@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Select Model</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-panel: rgba(12, 12, 16, 0.94);
+      --bg-item: rgba(255, 255, 255, 0.04);
+      --bg-item-hover: rgba(96, 165, 250, 0.12);
+      --bg-item-selected: rgba(96, 165, 250, 0.18);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --text-main: #f0f0f5;
+      --text-muted: #8a8a9a;
+      --text-dim: #5a5a6a;
+      --accent: #60a5fa;
+      --online: #34d399;
+      --offline: #6b7280;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body, html {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: transparent; color: var(--text-main);
+      font-size: 13px; -webkit-font-smoothing: antialiased;
+    }
+
+    .picker {
+      width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      background: var(--bg-panel);
+      backdrop-filter: blur(40px) saturate(1.4);
+      border: 1px solid var(--border-glass);
+      border-radius: 14px; overflow: hidden;
+      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .search-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-glass);
+      -webkit-app-region: drag;
+    }
+    .search-icon { color: var(--accent); flex-shrink: 0; }
+    #search-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text-main); font-size: 14px; font-family: inherit;
+      -webkit-app-region: no-drag;
+    }
+    #search-input::placeholder { color: var(--text-dim); }
+    .hint { color: var(--text-dim); font-size: 11px; flex-shrink: 0; -webkit-app-region: no-drag; }
+    .hint kbd {
+      background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px;
+      font-weight: 600; border: 1px solid rgba(255,255,255,0.08); font-family: inherit; font-size: 10px;
+    }
+
+    .model-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
+    .model-list::-webkit-scrollbar { width: 5px; }
+    .model-list::-webkit-scrollbar-track { background: transparent; }
+    .model-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+    .model-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 12px; border-radius: 10px;
+      cursor: pointer; transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+    .model-item:hover { background: var(--bg-item-hover); border-color: rgba(96,165,250,0.15); }
+    .model-item.selected { background: var(--bg-item-selected); border-color: rgba(96,165,250,0.3); }
+
+    .model-avatar {
+      width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; color: #fff;
+      background: linear-gradient(135deg, #6366f1, #22d3ee);
+    }
+    .model-main { flex: 1; min-width: 0; }
+    .model-name {
+      font-size: 13.5px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .active-tag {
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--accent);
+      background: rgba(96,165,250,0.15); border: 1px solid rgba(96,165,250,0.3);
+      padding: 1px 6px; border-radius: 6px;
+    }
+    .model-status { font-size: 11px; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .dot.on { background: var(--online); box-shadow: 0 0 6px rgba(52,211,153,0.6); }
+    .dot.off { background: var(--offline); }
+
+    .model-arrow { color: var(--text-dim); font-size: 13px; opacity: 0; transition: opacity 0.15s; }
+    .model-item:hover .model-arrow { opacity: 1; }
+
+    .loading, .empty-state { color: var(--text-muted); padding: 24px; text-align: center; }
+    .footer {
+      padding: 8px 16px; font-size: 11px; color: var(--text-dim);
+      text-align: center; border-top: 1px solid var(--border-glass);
+    }
+  </style>
+</head>
+<body>
+  <div class="picker">
+    <div class="search-bar">
+      <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search models..." autocomplete="off" spellcheck="false" autofocus>
+      <span class="hint"><kbd>↵</kbd> select &nbsp; <kbd>Esc</kbd> close</span>
+    </div>
+    <div id="model-list" class="model-list">
+      <div class="loading">Loading models…</div>
+    </div>
+    <div class="footer">
+      <kbd>↑↓</kbd> navigate &nbsp;·&nbsp; <kbd>↵</kbd> switch &amp; chat &nbsp;·&nbsp; <kbd>Ctrl+Shift+M</kbd> toggle
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const listEl = document.getElementById('model-list');
+      const searchInput = document.getElementById('search-input');
+      let models = [];
+      let filtered = [];
+      let selectedIdx = 0;
+
+      async function init() {
+        try {
+          models = await window.copilotAPI.getModelList();
+          // Put the active model first, then the rest.
+          models.sort((a, b) => (b.current === a.current) ? 0 : (a.current ? -1 : 1));
+          filtered = [...models];
+          selectedIdx = Math.max(0, filtered.findIndex(m => m.current));
+          render();
+        } catch (e) {
+          listEl.innerHTML = '<div class="empty-state">Could not load models</div>';
+        }
+      }
+
+      function render() {
+        if (filtered.length === 0) {
+          listEl.innerHTML = '<div class="empty-state">No models found</div>';
+          return;
+        }
+        listEl.innerHTML = filtered.map((m, i) => `
+          <div class="model-item ${i === selectedIdx ? 'selected' : ''}" data-idx="${i}">
+            <div class="model-avatar">${escapeHtml((m.name || m.id || '?').charAt(0).toUpperCase())}</div>
+            <div class="model-main">
+              <div class="model-name">
+                ${escapeHtml(m.name || m.id)}
+                ${m.current ? '<span class="active-tag">Active</span>' : ''}
+              </div>
+              <div class="model-status">
+                <span class="dot ${m.loggedIn ? 'on' : 'off'}"></span>
+                ${m.loggedIn ? 'Logged in' : 'Not logged in'}${m.supportsImages ? ' · vision' : ''}
+              </div>
+            </div>
+            <span class="model-arrow">→</span>
+          </div>
+        `).join('');
+
+        listEl.querySelectorAll('.model-item').forEach(el => {
+          el.addEventListener('click', () => selectModel(filtered[parseInt(el.dataset.idx)]));
+        });
+        const selected = listEl.querySelector('.selected');
+        if (selected) selected.scrollIntoView({ block: 'nearest' });
+      }
+
+      function selectModel(model) {
+        if (model && model.id) {
+          window.copilotAPI.selectModel(model.id);
+        }
+      }
+
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.toLowerCase().trim();
+        filtered = q ? models.filter(m => (m.name || m.id).toLowerCase().includes(q)) : [...models];
+        selectedIdx = 0;
+        render();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIdx = Math.min(selectedIdx + 1, filtered.length - 1);
+          render();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIdx = Math.max(selectedIdx - 1, 0);
+          render();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (filtered[selectedIdx]) selectModel(filtered[selectedIdx]);
+        } else if (e.key === 'Escape') {
+          window.copilotAPI.toggleModelPicker();
+        }
+      });
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+      }
+
+      document.addEventListener('DOMContentLoaded', init);
+    })();
+  </script>
+</body>
+</html>

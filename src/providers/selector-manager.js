@@ -8,7 +8,7 @@ const SELECTORS = {
     // The main input area
     textarea: '#prompt-textarea',
     // The submit arrow/button
-    sendButton: '[data-testid="send-button"]',
+    sendButton: '[data-testid*="send-button"], [data-testid*="send"], button[aria-label*="Send" i], button[type="submit"]',
     // The button that stops generation
     stopButton: '[data-testid="stop-button"], button[aria-label="Stop generating"]',
     // The container holding the assistant's response blocks
@@ -23,11 +23,11 @@ const SELECTORS = {
   gemini: {
     textarea: 'rich-textarea p',
     sendButton: 'button[aria-label="Send message"]',
-    stopButton: 'button[aria-label="Stop generating"]',
-    responseArea: 'message-content',
+    stopButton: 'button[aria-label="Stop generating"], button[aria-label*="Stop" i]',
+    responseArea: 'message-content, .model-response-text, .markdown.markdown-main-panel, div[id^="model-response-message-content"]',
     sidebarChatList: '.recent-conversations-list li',
     chatTitle: '.conversation-title',
-    streamingIndicator: 'loading-indicator'
+    streamingIndicator: 'loading-indicator, button[aria-label="Stop generating"], button[aria-label*="Stop" i], .blue-circle.stop-icon'
   },
   claude: {
     textarea: '[contenteditable="true"]',
@@ -39,22 +39,22 @@ const SELECTORS = {
     streamingIndicator: '.animate-pulse'
   },
   kimi: {
-    textarea: '[contenteditable="true"], textarea',
-    sendButton: 'button[class*="send"], [data-testid*="send"], button[type="submit"]',
-    stopButton: 'button[class*="stop"]',
-    responseArea: 'div[class*="message"], .markdown-body',
+    textarea: '.chat-input-editor, [contenteditable="true"], textarea',
+    sendButton: '.send-button-container, div[class*="send-button"], button[class*="send"], [data-testid*="send"], button[type="submit"]',
+    stopButton: 'button[class*="stop"], div[class*="stop"]',
+    responseArea: '.segment-assistant, .markdown, .markdown-body, div[class*="segment-content"], div[class*="assistant"] div[class*="markdown"]',
     sidebarChatList: 'a[href*="/chat/"]',
     chatTitle: 'span',
-    streamingIndicator: 'div[class*="loading"], .animate-pulse'
+    streamingIndicator: 'div[class*="loading"], .animate-pulse, button[class*="stop"], div[class*="stop"]'
   },
   deepseek: {
-    textarea: '#chat-input',
-    sendButton: 'div[class*="send-button"], button[data-testid*="send"], button[class*="send"]',
-    stopButton: 'div[class*="stop-button"], button[class*="stop"]',
-    responseArea: 'div[class*="message-content"], .ds-markdown',
+    textarea: 'textarea.ds-scroll-area, textarea[placeholder*="DeepSeek" i], textarea[placeholder*="Message" i], #chat-input',
+    sendButton: 'div[class*="ds-button--circle"], div[role="button"].ds-button--circle, div[class*="send-button"], button[data-testid*="send"], button[class*="send"]',
+    stopButton: 'div[class*="stop-button"], button[class*="stop"], div[role="button"][class*="stop"]',
+    responseArea: 'div[class*="ds-markdown"], .ds-markdown, div[class*="message-content"], div[class*="_4f9bf79"], div[class*="_9663006"]',
     sidebarChatList: 'div[class*="sidebar-item"]',
     chatTitle: 'div[class*="title"]',
-    streamingIndicator: 'div[class*="loading"], .animate-pulse'
+    streamingIndicator: 'div[class*="loading"], .animate-pulse, div[class*="stop-button"], div[role="button"][class*="stop"]'
   },
   perplexity: {
     textarea: 'textarea',

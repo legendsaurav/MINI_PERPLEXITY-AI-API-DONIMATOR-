@@ -122,7 +122,16 @@ func AuthMiddleware(apiKey, supabaseURL, supabaseKey string) func(http.Handler) 
 			reqConvID, _ := bodyMap["conversation_id"].(string)
 			linkedConvID := keyConfig.Metadata.ConversationID
 
-			if reqConvID == "" {
+			if linkedConvID == "*" {
+				// Multi-conversation key (e.g. a shared web key serving many users):
+				// accept whatever conversation_id the request carries so each end-user
+				// keeps an isolated conversation. Require it to be present so callers
+				// cannot accidentally merge everyone into one unnamed conversation.
+				if reqConvID == "" {
+					http.Error(w, "Bad Request: conversation_id is required for this API key", http.StatusBadRequest)
+					return
+				}
+			} else if reqConvID == "" {
 				bodyMap["conversation_id"] = linkedConvID
 			} else if reqConvID != linkedConvID {
 				http.Error(w, "Forbidden: Conversation ID does not match API Key context", http.StatusForbidden)

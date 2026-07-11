@@ -10,10 +10,27 @@ contextBridge.exposeInMainWorld('copilotAPI', {
   onStreamStart: (cb) => ipcRenderer.on('stream-start', (_, data) => cb(data)),
   onStreamEnd: (cb) => ipcRenderer.on('stream-end', (_, data) => cb(data)),
   onStreamError: (cb) => ipcRenderer.on('stream-error', (_, data) => cb(data)),
+  onVoiceStateChanged: (cb) => ipcRenderer.on('voice-state-changed', (_, state) => cb(state)),
+  onModeSelected: (cb) => ipcRenderer.on('mode-selected', (_, mode) => cb(mode)),
+  onModelSwitchStarted: (cb) => ipcRenderer.on('model-switch-started', (_, data) => cb(data)),
+  onModelSwitchReady: (cb) => ipcRenderer.on('model-switch-ready', (_, data) => cb(data)),
+  onDrawPointer: (cb) => ipcRenderer.on('draw-pointer', (_, data) => cb(data)),
+
+  // ── Model picker ────────────────────────────────────────────────────
+  getModelList: () => ipcRenderer.invoke('get-model-list'),
+  selectModel: (id) => ipcRenderer.invoke('select-model', id),
+  toggleModelPicker: () => ipcRenderer.send('toggle-model-picker'),
+  notifyVoiceState: (state) => ipcRenderer.send('notify-voice-state', state),
 
   // ── Input actions ───────────────────────────────────────────────────
   submitQuestion: (text) => ipcRenderer.send('submit-question', text),
   cancelRequest: () => ipcRenderer.send('cancel-request'),
+
+  // ── Agent actions ───────────────────────────────────────────────────
+  stopAgent: () => ipcRenderer.send('stop-agent'),
+  onAgentStarted: (cb) => ipcRenderer.on('agent-started', (_, data) => cb(data)),
+  onAgentProgress: (cb) => ipcRenderer.on('agent-progress', (_, data) => cb(data)),
+  onAgentFinished: (cb) => ipcRenderer.on('agent-finished', (_, data) => cb(data)),
 
   // ── Project CRUD ────────────────────────────────────────────────────
   getProjects: () => ipcRenderer.invoke('get-projects'),
@@ -42,6 +59,8 @@ contextBridge.exposeInMainWorld('copilotAPI', {
   toggleOverlay: () => ipcRenderer.send('toggle-overlay'),
   toggleProjects: () => ipcRenderer.send('toggle-projects'),
   toggleConversationPicker: () => ipcRenderer.send('toggle-conversation-picker'),
+  triggerPointer: (data) => ipcRenderer.send('trigger-pointer', data),
+  toggleCursor: (hide) => ipcRenderer.send('toggle-cursor', hide),
   onShowInput: (cb) => ipcRenderer.on('show-input', (_, data) => cb(data)),
   onProjectUpdated: (cb) => ipcRenderer.on('project-updated', (_, data) => cb(data)),
   onProjectsUpdated: (cb) => ipcRenderer.on('projects-updated', (_, data) => cb(data)),

@@ -7,17 +7,20 @@ const eventBus = require('./event-bus');
  */
 const PS_COMMAND = `powershell -NoProfile -NonInteractive -Command "` +
   `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;` +
+  `[StructLayout(LayoutKind.Sequential)]public struct RECT{public int Left;public int Top;public int Right;public int Bottom;}` +
   `public class FGWin{` +
   `[DllImport(\\\"user32.dll\\\")]public static extern IntPtr GetForegroundWindow();` +
   `[DllImport(\\\"user32.dll\\\")]public static extern int GetWindowText(IntPtr h,StringBuilder t,int c);` +
   `[DllImport(\\\"user32.dll\\\")]public static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);` +
+  `[DllImport(\\\"user32.dll\\\")]public static extern bool GetWindowRect(IntPtr h,out RECT r);` +
   `}' -PassThru | Out-Null; ` +
   `$h=[FGWin]::GetForegroundWindow(); ` +
   `$s=New-Object Text.StringBuilder 512; ` +
   `[FGWin]::GetWindowText($h,$s,512)|Out-Null; ` +
   `$p=0; [FGWin]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null; ` +
   `$pr=Get-Process -Id $p -EA 0; ` +
-  `@{title=$s.ToString();process=$pr.ProcessName;path=$pr.Path}|ConvertTo-Json -Compress"`;
+  `$r=New-Object RECT; [FGWin]::GetWindowRect($h,[ref]$r)|Out-Null; ` +
+  `@{title=$s.ToString();process=$pr.ProcessName;path=$pr.Path;bounds=@{left=$r.Left;top=$r.Top;right=$r.Right;bottom=$r.Bottom}}|ConvertTo-Json -Compress"`;
 
 /** Process names that belong to the Electron app itself and should be ignored. */
 const SELF_PROCESSES = new Set(['electron', 'desktop-ai-copilot']);
@@ -193,6 +196,38 @@ class ContextDetector {
     return this._currentContext;
   }
 
+  /**
+   * Perform an immediate synchronous poll of the foreground window and return
+   * the fresh context. Unlike the periodic _poll(), this skips debounce and
+   * UCID logic — it only updates _currentContext and returns it.
+   * Used by the agent screenshot endpoint to get real-time window bounds.
+   * @returns {{ ucid: string, processName: string, windowTitle: string, displayName: string, bounds: object }|null}
+   */
+  pollNow() {
+    let info;
+    try {
+      const raw = execSync(PS_COMMAND, {
+        windowsHide: true,
+        timeout: 5000,
+        encoding: 'utf8',
+      });
+      info = JSON.parse(raw);
+    } catch {
+      return this._currentContext; // fallback to last known
+    }
+
+    const windowTitle = info.title || '';
+    const processName = info.process || '';
+
+    // Ignore the copilot's own windows — return last known non-self context
+    if (SELF_PROCESSES.has(processName.toLowerCase())) return this._currentContext;
+    if (SELF_TITLES.some((s) => windowTitle.includes(s))) return this._currentContext;
+
+    const { ucid, displayName } = generateUCID(windowTitle, processName);
+    this._currentContext = { ucid, processName, windowTitle, displayName, bounds: info.bounds };
+    return this._currentContext;
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
@@ -228,7 +263,7 @@ class ContextDetector {
     const { ucid, displayName } = generateUCID(windowTitle, processName);
 
     // Update the raw "current context" snapshot
-    this._currentContext = { ucid, processName, windowTitle, displayName };
+    this._currentContext = { ucid, processName, windowTitle, displayName, bounds: info.bounds };
 
     // --- Debounce logic ---
     if (ucid === this._lastEmittedUcid) {

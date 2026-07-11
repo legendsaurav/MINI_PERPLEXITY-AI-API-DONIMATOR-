@@ -16,80 +16,154 @@ class BrowserController {
     if (!win) throw new Error('Hidden window not ready');
 
     const selectors = selectorManager.getSelectors(provider);
-    
-    // Safely escape the string for injection
     const safePrompt = JSON.stringify(promptString);
 
     console.log(`[BrowserController] Injecting prompt into ${provider}...`);
 
+    // 1. Wait for any active generation to finish (stop button gone)
     await win.webContents.executeJavaScript(`
-      (function() {
-        console.log('[Injected] Looking for textarea: ${selectors.textarea}');
-        
-        // Custom logic for Google Search: click "AI Mode" button if present
-        if ('${provider}' === 'google') {
-          try {
-            const aiModeElements = Array.from(document.querySelectorAll('button, div, span, a')).filter(el => {
-              const text = el.textContent.trim();
-              return text.toLowerCase() === 'ai mode' || text.toLowerCase().includes('ai mode');
-            });
-            if (aiModeElements.length > 0) {
-              console.log('[Injected] Found AI Mode element on Google, clicking...');
-              aiModeElements[0].click();
-            }
-          } catch (e) {
-            console.error('[Injected] Error clicking AI Mode on Google:', e.message);
-          }
+      (async function() {
+        const stopButtonSelector = '${selectors.stopButton || ''}';
+        const streamingIndicatorSelector = '${selectors.streamingIndicator || ''}';
+        for (let i = 0; i < 20; i++) {
+          const stopBtn = stopButtonSelector ? document.querySelector(stopButtonSelector) : null;
+          const indicator = streamingIndicatorSelector ? document.querySelector(streamingIndicatorSelector) : null;
+          if (!stopBtn && !indicator) break;
+          console.log('[Injected] Waiting for active generation to finish...');
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
+      })()
+    `).catch(err => console.error('[BrowserController] Wait for active generation failed:', err.message));
 
-        const textarea = document.querySelector('${selectors.textarea}');
+    // 2. Set the input value and focus
+    const needFallback = await win.webContents.executeJavaScript(`
+      (async function() {
+        const textareaSelector = '${selectors.textarea}';
+        let textarea = document.querySelector(textareaSelector);
         
         if (!textarea) {
-          console.error('[Injected] Textarea not found!');
-          // Try contenteditable div (ChatGPT uses this)
-          const contentEditable = document.querySelector('#prompt-textarea');
+          const contentEditable = document.querySelector('#prompt-textarea') || document.querySelector('[contenteditable="true"]');
           if (contentEditable) {
-            console.log('[Injected] Found contenteditable prompt-textarea');
             contentEditable.focus();
-            contentEditable.textContent = ${safePrompt};
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, ${safePrompt});
             contentEditable.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea = contentEditable;
           } else {
-            console.error('[Injected] No input element found at all!');
-            if (window.__aiCopilot) window.__aiCopilot.sendError('Textarea not found');
+            console.error('[Injected] No input element found!');
             return false;
           }
         } else {
-          console.log('[Injected] Found textarea, setting value...');
-          // Handle both <textarea> and contenteditable elements
+          textarea.focus();
           if (textarea.tagName === 'TEXTAREA' || textarea.tagName === 'INPUT') {
             textarea.value = ${safePrompt};
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
           } else {
-            textarea.textContent = ${safePrompt};
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, ${safePrompt});
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
           }
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Wait a brief moment for React state to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const sendButtonSelector = '${selectors.sendButton}';
+        const sendBtn = document.querySelector(sendButtonSelector);
+        if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
+          console.log('[Injected] Found active send button, clicking...');
+          sendBtn.click();
+          return false; // No fallback needed
         }
         
-        // Wait briefly, then click send
-        setTimeout(() => {
-          console.log('[Injected] Looking for send button: ${selectors.sendButton}');
-          const sendBtn = document.querySelector('${selectors.sendButton}');
-          if (sendBtn) {
-            console.log('[Injected] Found send button, clicking...');
-            sendBtn.click();
-          } else {
-            console.log('[Injected] Send button not found, trying Enter key...');
-            // Fallback: press Enter
-            const target = document.querySelector('${selectors.textarea}') || document.querySelector('#prompt-textarea');
-            if (target) {
-              target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-            }
-          }
-        }, 500);
-        
-        return true;
+        console.log('[Injected] Send button not found or disabled. Requesting native Enter fallback.');
+        if (textarea) textarea.focus();
+        return true; // Request fallback
       })();
     `);
-    
+
+    // 2b. DeepSeek submission fix: its editor is a controlled textarea that ignores a
+    // programmatic `.value =` — the send button stays effectively empty and submits
+    // nothing. A real keystroke is required to register the text. Focus the input,
+    // type a trailing SPACE (a genuine key event that flushes the injected text into
+    // the editor's state and enables send), then press ENTER to submit.
+    if (provider === 'deepseek') {
+      console.log('[BrowserController] DeepSeek: applying native space+Enter submission.');
+      await win.webContents.executeJavaScript(`
+        (function(){
+          const ta = document.querySelector('${selectors.textarea}');
+          if (ta) { ta.focus();
+            try { const end = (ta.value || '').length; ta.setSelectionRange(end, end); } catch(e){} }
+        })();
+      `).catch(() => {});
+      win.webContents.focus();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      // Trailing space — makes the controlled editor register the injected text.
+      win.webContents.sendInputEvent({ type: 'char', keyCode: ' ' });
+      await new Promise(resolve => setTimeout(resolve, 400));
+      // Enter to submit.
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+      console.log('[BrowserController] Prompt injection complete (deepseek space+Enter).');
+      return;
+    }
+
+    // 3. Trigger native Enter key if requested
+    if (needFallback) {
+      console.log(`[BrowserController] Triggering native Enter key fallback...`);
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+
+      // Failsafe: verify whether the prompt actually moved into the provider state.
+      // If nothing changed after 2s, retry once with a more aggressive fallback.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const submissionVerified = await win.webContents.executeJavaScript(`
+        (function() {
+          const textarea = document.querySelector('${selectors.textarea}') || document.querySelector('#prompt-textarea');
+          const sendButtonSelector = '${selectors.sendButton}';
+          const sendBtn = document.querySelector(sendButtonSelector);
+          const stopButtonSelector = '${selectors.stopButton || ''}';
+          const stopBtn = stopButtonSelector ? document.querySelector(stopButtonSelector) : null;
+          const textareaText = textarea ? (textarea.value || textarea.textContent || '').trim() : '';
+          const hasSubmittedState = !!stopBtn || !!(sendBtn && sendBtn.disabled);
+          return { textareaText, hasSubmittedState, hasSendButton: !!sendBtn };
+        })()
+      `).catch(() => ({ textareaText: '', hasSubmittedState: false, hasSendButton: false }));
+
+      if (!submissionVerified || !submissionVerified.textareaText || !submissionVerified.hasSubmittedState) {
+        console.warn('[BrowserController] Submission did not appear to take effect. Trying a second fallback...');
+        await win.webContents.executeJavaScript(`
+          (function() {
+            const textarea = document.querySelector('${selectors.textarea}') || document.querySelector('#prompt-textarea');
+            if (textarea) {
+              textarea.focus();
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            const btns = document.querySelectorAll('button');
+            for (const btn of btns) {
+              const testid = btn.getAttribute('data-testid') || '';
+              const aria = btn.getAttribute('aria-label') || '';
+              if (testid.includes('send') || aria.includes('Send') || aria.includes('Submit')) {
+                btn.disabled = false;
+                btn.click();
+                return true;
+              }
+            }
+            const form = document.querySelector('form');
+            if (form) {
+              form.requestSubmit();
+              return true;
+            }
+            return false;
+          })()
+        `).catch(() => false);
+      }
+    }
+
     console.log(`[BrowserController] Prompt injection complete.`);
   }
 
@@ -109,6 +183,9 @@ class BrowserController {
           window.__copilotObserver.disconnect();
           console.log('[Observer] Disconnected previous observer.');
         }
+        if (window.__copilotPoll) {
+          clearInterval(window.__copilotPoll);
+        }
         if (window.__copilotStabilityTimer) {
           clearTimeout(window.__copilotStabilityTimer);
         }
@@ -116,13 +193,16 @@ class BrowserController {
           clearTimeout(window.__copilotInactivityTimer);
         }
 
+        window.__sawStopButton = false;
+        window.__sawSendButtonDisabled = false;
+
         // Snapshot: capture the current text of the LAST response node at attach time.
         // Anything beyond this text is "new" streaming content.
         const allNodesAtStart = document.querySelectorAll('${selectors.responseArea}');
         const lastNodeAtStart = allNodesAtStart.length > 0 ? allNodesAtStart[allNodesAtStart.length - 1] : null;
         const snapshotText = lastNodeAtStart ? convertToMarkdown(lastNodeAtStart).trim() : '';
         const snapshotNodeCount = allNodesAtStart.length;
-        
+
         console.log('[Observer] Snapshot: ' + snapshotNodeCount + ' nodes, ' + snapshotText.length + ' chars of existing text');
 
         let lastText = snapshotText; // Start tracking from the snapshot
@@ -149,9 +229,9 @@ class BrowserController {
           }
           if (hasStarted && !completionSent) {
             window.__copilotInactivityTimer = setTimeout(() => {
-              console.log('[Observer] Inactivity timer triggered completion (text stopped changing for 3.5s).');
+              console.log('[Observer] Inactivity timer triggered completion (text stopped changing for 25s).');
               sendCompletion();
-            }, 3500); // 3.5s of no text changes
+            }, 25000); // 25s of no text changes (large buffer to accommodate image analysis)
           }
         }
 
@@ -160,13 +240,21 @@ class BrowserController {
           completionSent = true;
           
           const finalNodes = document.querySelectorAll('${selectors.responseArea}');
-          const finalText = finalNodes.length > 0 ? convertToMarkdown(finalNodes[finalNodes.length - 1]).trim() : lastText;
-          
+          // Prefer the freshly-extracted node text; otherwise fall back to lastText,
+          // which holds the last non-empty response text captured during streaming
+          // (clean, selector-derived — not page chrome).
+          const freshText = finalNodes.length > 0 ? convertToMarkdown(finalNodes[finalNodes.length - 1]).trim() : '';
+          const finalText = freshText.length > 0 ? freshText : lastText;
+
           console.log('[Observer] Stream complete. Final text length:', finalText.length);
           window.postMessage({ type: '__copilot_complete', data: { fullText: finalText } }, '*');
-          
+
           if (window.__copilotObserver) {
             window.__copilotObserver.disconnect();
+          }
+          if (window.__copilotPoll) {
+            clearInterval(window.__copilotPoll);
+            window.__copilotPoll = null;
           }
           if (window.__copilotStabilityTimer) {
             clearTimeout(window.__copilotStabilityTimer);
@@ -213,7 +301,12 @@ class BrowserController {
               } else if (tag === 'code') {
                 md += String.fromCharCode(96) + child.textContent + String.fromCharCode(96);
               } else if (tag === 'a') {
-                md += '[' + convertToMarkdown(child) + '](' + child.getAttribute('href') + ')';
+                const href = child.getAttribute('href');
+                if (href) {
+                  md += '[' + convertToMarkdown(child) + '](' + href + ')';
+                } else {
+                  md += convertToMarkdown(child);
+                }
               } else if (tag === 'ul') {
                 for (const li of child.children) {
                   if (li.tagName.toLowerCase() === 'li') md += '- ' + convertToMarkdown(li).trim() + '\\n';
@@ -251,53 +344,73 @@ class BrowserController {
           return md;
         }
 
-        window.__copilotObserver = new MutationObserver(() => {
+        // The core per-tick logic. Driven by BOTH the MutationObserver AND a polling
+        // interval below — some SPAs (e.g. DeepSeek) render responses in a tree the
+        // observer never sees, so a timer-based fallback guarantees progress + completion.
+        function processTick() {
+          if ('${provider}' === 'chatgpt') {
+            try {
+              const preferenceBtns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(b => {
+                const txt = b.textContent.trim().toLowerCase();
+                return txt === 'response 1' || txt === 'option 1' || txt === 'response a' ||
+                       txt.includes('response 1') || txt.includes('option 1') || txt.includes('response a');
+              });
+              if (preferenceBtns.length > 0) {
+                const btn = preferenceBtns[0];
+                const now = Date.now();
+                if (!window.__lastComparisonClick || now - window.__lastComparisonClick > 2000) {
+                  window.__lastComparisonClick = now;
+                  console.log('[Observer] Detected response comparison. Clicking to dismiss...', btn.textContent.trim());
+                  btn.click();
+                  return;
+                }
+              }
+            } catch (e) {
+              console.error('[Observer] Error in response comparison check:', e.message);
+            }
+          }
+
           const allNodes = document.querySelectorAll('${selectors.responseArea}');
           console.log('[DEBUG-DOM] observer fired. allNodes count: ' + allNodes.length + '. Body innerText: ' + document.body.innerText.substring(0, 1000).split('\\n').join(' '));
-          if (allNodes.length === 0) {
-            const alternatives = [];
-            document.querySelectorAll('div, section, article').forEach(el => {
-              const className = el.className || '';
-              if (className.includes('font-') || className.includes('message') || className.includes('prose') || className.includes('chat')) {
-                alternatives.push(el);
+
+          // Extract the latest response text if the responseArea selector matches.
+          // NOTE: we intentionally do NOT bail out when it matches nothing — button-state
+          // completion detection below must still run so providers whose response selector
+          // is stale (or whose text lands in the snapshot's own last node) can still finish.
+          if (allNodes.length > 0) {
+            const node = allNodes[allNodes.length - 1];
+            if (node) {
+              // If a brand-new response node appeared, advance tracking to it.
+              if (allNodes.length - 1 > currentNodeIndex) {
+                currentNodeIndex = allNodes.length - 1;
+                lastText = '';
               }
-            });
-            if (alternatives.length > 0) {
-              console.log('[DEBUG-DOM] No match for ${selectors.responseArea}. Found alternative containers:');
-              alternatives.forEach((alt, idx) => {
-                if (idx < 15) {
-                  console.log('[DEBUG-DOM] tag=' + alt.tagName + ' class="' + alt.className + '" textPreview="' + alt.textContent.trim().substring(0, 80).split('\\n').join(' ') + '"');
+
+              const currentText = convertToMarkdown(node).trim();
+
+              // Accept text either from a new node (index past snapshot) OR from the
+              // snapshot's own last node growing in place (currentText diverging from
+              // the captured snapshotText) — the latter covers providers like Kimi that
+              // update an existing node instead of appending one.
+              const grewInPlace = currentNodeIndex === snapshotNodeCount - 1 &&
+                                   currentText.length > snapshotText.length &&
+                                   currentText !== snapshotText;
+
+              if ((currentNodeIndex >= snapshotNodeCount || grewInPlace) && currentText !== lastText) {
+                if (!hasStarted && currentText.length > 0) {
+                  hasStarted = true;
+                  console.log('[Observer] Streaming started! (first text chunk arrived)');
+                  resetInactivityTimer();
                 }
-              });
-            }
-            return;
-          }
-          
-          const node = allNodes[allNodes.length - 1];
-          if (!node) return;
-          
-          // If a new node appeared, reset tracking
-          if (allNodes.length - 1 > currentNodeIndex) {
-            currentNodeIndex = allNodes.length - 1;
-            lastText = '';
-            // Do NOT set hasStarted = true here. Wait for actual text to avoid race conditions.
-          }
-          
-          const currentText = convertToMarkdown(node).trim();
-          
-          if (currentNodeIndex >= snapshotNodeCount && currentText !== lastText) {
-            if (!hasStarted && currentText.length > 0) {
-              hasStarted = true;
-              console.log('[Observer] Streaming started! (first text chunk arrived)');
-              resetInactivityTimer();
-            }
-            
-            lastText = currentText;
-            
-            if (currentText.length > 0) {
-              window.postMessage({ type: '__copilot_sync', data: currentText }, '*');
-              resetStabilityTimer();
-              resetInactivityTimer();
+
+                lastText = currentText;
+
+                if (currentText.length > 0) {
+                  window.postMessage({ type: '__copilot_sync', data: currentText }, '*');
+                  resetStabilityTimer();
+                  resetInactivityTimer();
+                }
+              }
             }
           }
 
@@ -311,7 +424,7 @@ class BrowserController {
           if (isStopButtonVisible) {
              window.__sawStopButton = true;
           }
-          
+
           if (!isSendButtonEnabled) {
              window.__sawSendButtonDisabled = true;
           }
@@ -328,16 +441,26 @@ class BrowserController {
               }, 1500);
             }
           }
-        });
+        }
 
-        // Observe the entire body
-        window.__copilotObserver.observe(document.body, {
+        window.__copilotObserver = new MutationObserver(processTick);
+
+        // Observe documentElement (not body): some SPAs (e.g. DeepSeek) swap out
+        // document.body after load, which would silently detach an observer bound
+        // to the old body node. documentElement is stable for the page lifetime.
+        window.__copilotObserver.observe(document.documentElement, {
           childList: true,
           subtree: true,
           characterData: true
         });
-        
-        console.log('[Observer] MutationObserver attached to document.body');
+
+        // Polling fallback: MutationObserver misses responses rendered in shadow
+        // DOM / detached trees (observed with DeepSeek). Re-run the same tick on a
+        // timer so text capture and completion still happen. Cleared in sendCompletion.
+        if (window.__copilotPoll) clearInterval(window.__copilotPoll);
+        window.__copilotPoll = setInterval(processTick, 750);
+
+        console.log('[Observer] MutationObserver + poll attached to document.documentElement');
       })();
     `);
 
@@ -595,94 +718,80 @@ class BrowserController {
     console.log(`[BrowserController] Waiting ${providerDelay}ms for image upload to process...`);
     await this._sleep(providerDelay);
 
-    // Step 4: Focus textarea and type text using native keyboard events
-    // This is the SAME mechanism that works for text-only injectAndSubmit
-    await win.webContents.executeJavaScript(`
+    // Step 4: Inject prompt text directly into DOM and dispatch input event
+    const safePrompt = JSON.stringify(promptString);
+    const promptSet = await win.webContents.executeJavaScript(`
       (function() {
         const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
         if (textarea) {
-          textarea.focus();
-          textarea.click();
-          // Move cursor to end
-          const selection = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(textarea);
-          range.collapse(false);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          console.log('[Injected] Textarea focused and cursor at end for native typing.');
+          console.log('[Injected] Setting textarea value directly in DOM...');
+          if (textarea.tagName === 'TEXTAREA' || textarea.tagName === 'INPUT') {
+            textarea.value = ${safePrompt};
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            textarea.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, ${safePrompt});
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          console.log('[Injected] Text value set directly and input event dispatched.');
+          return true;
         }
+        console.error('[Injected] Textarea not found for text injection!');
+        return false;
       })();
     `);
-    await this._sleep(300);
-
-    // Use Electron's native insertText which triggers proper React input events
-    // This is the EXACT same method used in injectAndSubmit for text-only (which works!)
-    await win.webContents.insertText(promptString);
-    console.log(`[BrowserController] Text typed via native insertText.`);
+    console.log(`[BrowserController] Text injected directly into DOM: ${promptSet}`);
     
     // Brief delay to let React process
     await this._sleep(500);
 
-    // Step 5: Submit via native Enter key (same as text-only flow)
-    console.log(`[BrowserController] Submitting via native Enter key...`);
-    await win.webContents.executeJavaScript(`
-      (function() {
-        const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
-        if (textarea) textarea.focus();
-      })();
-    `);
-    await this._sleep(200);
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
-    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
-    await this._sleep(50);
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
-    
+    // Step 5: If the send button is already enabled, use it. Otherwise try Enter, then retry with the button.
+    const sendReady = await this._waitForSendEnabled(win, selectors, 8000);
+    console.log(`[BrowserController] Send button ready before submit: ${sendReady}`);
+
+    if (sendReady) {
+      console.log(`[BrowserController] Submitting via send button...`);
+      const clicked = await this._clickSendButton(win, selectors);
+      console.log(`[BrowserController] Send button click result: ${clicked}`);
+    } else {
+      console.log(`[BrowserController] Submitting via native Enter key...`);
+      await win.webContents.executeJavaScript(`
+        (function() {
+          const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
+          if (textarea) textarea.focus();
+        })();
+      `);
+      await this._sleep(200);
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+      await this._sleep(50);
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    }
+
     // Wait 2s then check if prompt was actually submitted (page navigates or button changes)
     await this._sleep(2000);
     
-    // Verify submission - check if a new assistant message appeared or URL changed
     const submitted = await win.webContents.executeJavaScript(`
       (function() {
-        // Check if the send button is now gone (replaced by stop button) - means response is generating
         const sendBtn = document.querySelector('[data-testid="send-button"]');
-        const stopBtn = document.querySelector('[data-testid="stop-button"]') 
+        const stopBtn = document.querySelector('[data-testid="stop-button"]')
           || document.querySelector('button[aria-label="Stop generating"]')
           || document.querySelector('button[aria-label="Stop"]');
-        const textarea = document.querySelector('#prompt-textarea');
-        const textareaEmpty = textarea && textarea.textContent.trim().length === 0;
-        
-        console.log('[Injected] Post-submit check: sendBtn=' + !!sendBtn + ' stopBtn=' + !!stopBtn + ' textareaEmpty=' + textareaEmpty);
-        return { sendBtn: !!sendBtn, stopBtn: !!stopBtn, textareaEmpty };
+        const textarea = document.querySelector('#prompt-textarea') || document.querySelector('${selectors.textarea}');
+        const textareaText = textarea ? (textarea.value || textarea.textContent || '').trim() : '';
+        const textareaEmpty = !textareaText;
+        console.log('[Injected] Post-submit check: sendBtn=' + !!sendBtn + ' stopBtn=' + !!stopBtn + ' textareaEmpty=' + textareaEmpty + ' textareaText=' + JSON.stringify(textareaText.slice(0, 80)));
+        return { sendBtn: !!sendBtn, stopBtn: !!stopBtn, textareaEmpty, textareaText };
       })();
     `);
     console.log(`[BrowserController] Post-submit check: ${JSON.stringify(submitted)}`);
     
-    // If not submitted (textarea still has text, no stop button), try clicking send button directly
     if (submitted && !submitted.stopBtn && !submitted.textareaEmpty) {
-      console.log(`[BrowserController] Enter key didn't submit. Trying direct button click...`);
-      await win.webContents.executeJavaScript(`
-        (function() {
-          // Find ANY button that could be the send/submit button
-          const btns = document.querySelectorAll('button');
-          for (const btn of btns) {
-            const testid = btn.getAttribute('data-testid') || '';
-            const aria = btn.getAttribute('aria-label') || '';
-            if (testid.includes('send') || aria.includes('Send')) {
-              btn.disabled = false;
-              btn.click();
-              console.log('[Injected] Clicked send button:', testid || aria);
-              return;
-            }
-          }
-          // Last resort: find the submit form
-          const form = document.querySelector('form');
-          if (form) {
-            form.requestSubmit();
-            console.log('[Injected] Called form.requestSubmit()');
-          }
-        })();
-      `);
+      console.log(`[BrowserController] Submission did not appear to take effect. Retrying via direct button click...`);
+      const clicked = await this._clickSendButton(win, selectors);
+      console.log(`[BrowserController] Retry click result: ${clicked}`);
+      await this._sleep(1500);
     }
     
     console.log(`[BrowserController] Screenshot + prompt injection complete.`);

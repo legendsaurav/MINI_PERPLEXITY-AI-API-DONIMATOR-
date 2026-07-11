@@ -32,8 +32,8 @@ providers:
     login_url: "https://claude.ai/login"
     startup_timeout_secs: 30
   kimi:
-    base_url: "https://kimi.moonshot.cn"
-    login_url: "https://kimi.moonshot.cn"
+    base_url: "https://kimi.com"
+    login_url: "https://kimi.com"
     startup_timeout_secs: 30
   deepseek:
     base_url: "https://chat.deepseek.com"

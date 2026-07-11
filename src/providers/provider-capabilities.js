@@ -40,8 +40,8 @@ const CAPABILITIES = {
     supportsProjects: true,
     supportsConversationRestore: true,
     supportsCurrentPageMode: true,
-    baseUrl: 'https://kimi.moonshot.cn',
-    loginUrl: 'https://kimi.moonshot.cn'
+    baseUrl: 'https://kimi.com',
+    loginUrl: 'https://kimi.com'
   },
   deepseek: {
     supportsStreaming: true,

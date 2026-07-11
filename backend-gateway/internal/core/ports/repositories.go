@@ -15,6 +15,7 @@ type ConversationRepository interface {
 type MessageRepository interface {
 	GetByConversationID(ctx context.Context, convID string) ([]*domain.Message, error)
 	AddMessage(ctx context.Context, msg *domain.Message) error
+	DeleteByID(ctx context.Context, id string) error
 }
 
 type MemoryRepository interface {

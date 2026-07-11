@@ -41,8 +41,8 @@ class SessionManager {
         this.setAuthState(provider, false);
         return false;
       }
-      if (provider === 'kimi' && !url.includes('kimi.moonshot.cn')) {
-        console.log(`[SessionManager] Not on kimi.moonshot.cn (currently: ${new URL(url).hostname}). Not authenticated.`);
+      if (provider === 'kimi' && !url.includes('kimi.moonshot.cn') && !url.includes('kimi.com')) {
+        console.log(`[SessionManager] Not on kimi.moonshot.cn or kimi.com (currently: ${new URL(url).hostname}). Not authenticated.`);
         this.setAuthState(provider, false);
         return false;
       }

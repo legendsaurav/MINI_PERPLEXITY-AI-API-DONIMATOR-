@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/your-repo/ai-gateway-backend/internal/api"
@@ -13,9 +14,42 @@ import (
 	"github.com/your-repo/ai-gateway-backend/pkg/config"
 	"github.com/your-repo/ai-gateway-backend/pkg/logger"
 	"os"
+	"strings"
 )
 
+func loadEnv() {
+	paths := []string{".env", "../.env"}
+	for _, path := range paths {
+		file, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		defer file.Close()
+
+		logger.InfoLog.Printf("Loading environment variables from %s\n", path)
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			val = strings.Trim(val, `"'`)
+			os.Setenv(key, val)
+		}
+		break
+	}
+}
+
 func main() {
+	// 0. Load .env file
+	loadEnv()
+
 	// 1. Load Configuration
 	cfgPath := "config.json"
 	if envPath := os.Getenv("CONFIG_PATH"); envPath != "" {

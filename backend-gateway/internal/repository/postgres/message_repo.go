@@ -40,3 +40,8 @@ func (r *MessageRepository) AddMessage(ctx context.Context, msg *domain.Message)
 		msg.ConversationID, msg.Role, msg.Content, msg.DeviceID, msg.UserID, msg.Model, msg.CreatedAt)
 	return err
 }
+
+func (r *MessageRepository) DeleteByID(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, "DELETE FROM messages WHERE id = $1", id)
+	return err
+}

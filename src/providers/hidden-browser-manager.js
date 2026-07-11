@@ -6,8 +6,10 @@ const capabilities = require('./provider-capabilities');
 // ============================================================
 // 🔍 DEBUG MODE - Set to true to make the hidden browser VISIBLE
 // so you can see what's happening (CloudFlare, CAPTCHA, login, etc.)
+// Set to false to keep the AI browser hidden during normal operation.
+// (Login is still possible via showForLogin() when a provider needs it.)
 // ============================================================
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 /**
  * Hidden Browser Manager
@@ -16,6 +18,38 @@ const DEBUG_MODE = true;
 class HiddenBrowserManager {
   constructor() {
     this.windows = new Map(); // provider -> BrowserWindow
+    this.lastUrls = new Map(); // provider -> string (last visited URL)
+  }
+
+  /**
+   * Destroy all backend browser windows except the specified one
+   * to ensure only one runs at a time.
+   * @param {string} exceptProvider 
+   */
+  destroyOtherWindows(exceptProvider) {
+    const toDestroy = [];
+    for (const [provider, win] of this.windows.entries()) {
+      if (provider !== exceptProvider) {
+        toDestroy.push({ provider, win });
+      }
+    }
+
+    for (const { provider, win } of toDestroy) {
+      if (win && !win.isDestroyed()) {
+        try {
+          const currentUrl = win.webContents.getURL();
+          if (currentUrl && currentUrl.startsWith('http')) {
+            console.log(`[HiddenBrowser] Saving last URL for ${provider}: ${currentUrl}`);
+            this.lastUrls.set(provider, currentUrl);
+          }
+        } catch (e) {
+          console.error(`[HiddenBrowser] Failed to get URL before destroying:`, e.message);
+        }
+        console.log(`[HiddenBrowser] Closing existing backend browser window for: ${provider}`);
+        win.destroy();
+      }
+      this.windows.delete(provider);
+    }
   }
 
   /**
@@ -24,6 +58,8 @@ class HiddenBrowserManager {
    * @returns {Promise<BrowserWindow>}
    */
   async ensureWindow(provider) {
+    this.destroyOtherWindows(provider);
+
     if (this.windows.has(provider) && !this.windows.get(provider).isDestroyed()) {
       return this.windows.get(provider);
     }
@@ -61,21 +97,47 @@ class HiddenBrowserManager {
       this.windows.delete(provider);
     });
 
-    // Log navigation events for debugging
+    // Log navigation events for debugging and save last visited URL
     win.webContents.on('did-navigate', (event, url) => {
       console.log(`[DEBUG] 🌐 Navigated to: ${url}`);
+      if (url && url.startsWith('http')) {
+        this.lastUrls.set(provider, url);
+      }
     });
     win.webContents.on('console-message', (event, level, message, line, sourceId) => {
       console.log(`[Browser Console - ${provider}] ${message}`);
     });
     win.webContents.on('did-navigate-in-page', (event, url) => {
       console.log(`[DEBUG] 🌐 In-page navigation: ${url}`);
+      if (url && url.startsWith('http')) {
+        this.lastUrls.set(provider, url);
+        // Real-time conversation URL tracking: ChatGPT uses client-side routing,
+        // so it navigates in-page from chatgpt.com → chatgpt.com/c/<id> after
+        // the first message. Capture this immediately so it's available when
+        // streamFinished fires.
+        try {
+          const stateManager = require('../main/state-manager');
+          if (stateManager.isConversationUrl(provider, url)) {
+            const existingUrl = stateManager.getConstantUrl(provider);
+            if (existingUrl !== url) {
+              stateManager.setConstantUrl(provider, url);
+              console.log(`[HiddenBrowser] Conversation URL auto-captured for ${provider}: ${url}`);
+            }
+          }
+        } catch (e) {
+          // Non-critical
+        }
+      }
     });
     win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       console.error(`[DEBUG] ❌ Failed to load: ${validatedURL} | Error: ${errorCode} ${errorDescription}`);
     });
     win.webContents.on('did-finish-load', () => {
-      console.log(`[DEBUG] ✅ Page finished loading: ${win.webContents.getURL()}`);
+      const currentUrl = win.webContents.getURL();
+      console.log(`[DEBUG] ✅ Page finished loading: ${currentUrl}`);
+      if (currentUrl && currentUrl.startsWith('http')) {
+        this.lastUrls.set(provider, currentUrl);
+      }
       // Re-attach MutationObserver on full page load (crucial for multi-page search flows like Google)
       try {
         const browserController = require('./browser-controller');
@@ -87,8 +149,9 @@ class HiddenBrowserManager {
       }
     });
 
-    console.log(`[DEBUG] 🚀 Loading URL: ${caps.baseUrl}`);
-    await win.loadURL(caps.baseUrl);
+    const targetUrl = this.lastUrls.get(provider) || caps.baseUrl;
+    console.log(`[DEBUG] 🚀 Loading URL: ${targetUrl}`);
+    await win.loadURL(targetUrl);
     return win;
   }
 

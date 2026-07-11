@@ -35,7 +35,7 @@ func NewChatService(
 		convRepo:      convRepo,
 		contextEngine: contextEngine,
 		router:        router,
-		httpClient:    &http.Client{Timeout: 5 * time.Minute},
+		httpClient:    &http.Client{Timeout: 12 * time.Minute},
 	}
 }
 
@@ -79,11 +79,15 @@ func (s *ChatService) Completions(ctx context.Context, req *ports.ChatRequest) (
 		return nil, err
 	}
 
-	// 5. Forward request to downstream model
+
+	// 5. Forward request to downstream model.
+	// Pass conversation_id downstream so the browser bridge can isolate each user's
+	// turn (fresh chat + that conversation's full context) instead of a shared thread.
 	payload := map[string]interface{}{
-		"model":    req.Model,
-		"messages": fullPrompt,
-		"stream":   false,
+		"model":           req.Model,
+		"messages":        fullPrompt,
+		"stream":          false,
+		"conversation_id": req.ConversationID,
 	}
 	body, _ := json.Marshal(payload)
 	
@@ -196,9 +200,10 @@ func (s *ChatService) StreamCompletions(ctx context.Context, req *ports.ChatRequ
 
 		// 5. Forward request to downstream model
 		payload := map[string]interface{}{
-			"model":    req.Model,
-			"messages": fullPrompt,
-			"stream":   true,
+			"model":           req.Model,
+			"messages":        fullPrompt,
+			"stream":          true,
+			"conversation_id": req.ConversationID,
 		}
 		body, _ := json.Marshal(payload)
 
@@ -282,5 +287,52 @@ func (s *ChatService) StreamCompletions(ctx context.Context, req *ports.ChatRequ
 	}()
 
 	return chunkChan, errChan
+}
+
+func (s *ChatService) waitForSupabaseAssistantMessage(ctx context.Context, convID string, userMsgID string, userMsgTime time.Time) (*ports.ChatResponse, error) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	// Timeout after 90 seconds (browser automation might take a bit of time)
+	timeout := time.After(90 * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timeout:
+			return nil, fmt.Errorf("timeout waiting for assistant response from Mini Perplexity")
+		case <-ticker.C:
+			messages, err := s.msgRepo.GetByConversationID(ctx, convID)
+			if err != nil {
+				continue
+			}
+
+			// Search for assistant message created after userMsgTime
+			var latestAssistant *domain.Message
+			for _, m := range messages {
+				if m.Role == "assistant" && m.CreatedAt.After(userMsgTime) {
+					if latestAssistant == nil || m.CreatedAt.After(latestAssistant.CreatedAt) {
+						latestAssistant = m
+					}
+				}
+			}
+
+			if latestAssistant != nil {
+				// Delete user and assistant messages to keep Supabase storage clean
+				go func(uID, aID string) {
+					bgCtx := context.Background()
+					s.msgRepo.DeleteByID(bgCtx, uID)
+					s.msgRepo.DeleteByID(bgCtx, aID)
+				}(userMsgID, latestAssistant.ID)
+
+				return &ports.ChatResponse{
+					ID:      latestAssistant.ID,
+					Content: latestAssistant.Content,
+					Model:   latestAssistant.Model,
+				}, nil
+			}
+		}
+	}
 }
 

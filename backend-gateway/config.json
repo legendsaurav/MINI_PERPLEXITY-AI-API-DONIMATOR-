@@ -3,9 +3,17 @@
   "database_url": "postgres://postgres:password@localhost:5432/postgres",
   "api_key": "your-secret-key",
   "models": {
-    "gpt-4": "https://api.openai.com/v1",
-    "gpt-3.5-turbo": "https://api.openai.com/v1",
+    "mini-perplexity": "http://localhost:9876",
+    "gpt-4": "http://localhost:9876",
+    "gpt-3.5-turbo": "http://localhost:9876",
+    "chatgpt": "http://localhost:9876",
+    "gemini": "http://localhost:9876",
+    "claude": "http://localhost:9876",
+    "kimi": "http://localhost:9876",
+    "deepseek": "http://localhost:9876",
+    "perplexity": "http://localhost:9876",
+    "google": "http://localhost:9876",
     "local": "http://localhost:11434/v1",
-    "default": "https://api.openai.com/v1"
+    "default": "http://localhost:9876"
   }
 }

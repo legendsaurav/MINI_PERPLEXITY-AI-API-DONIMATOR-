@@ -7,7 +7,7 @@ const { app } = require('electron');
  * Keys that are persisted to disk.
  * Everything else is volatile and lives only in-memory.
  */
-const PERSISTED_KEYS = new Set(['currentProject', 'currentProvider', 'apiKey', 'screenshotDelays']);
+const PERSISTED_KEYS = new Set(['currentProject', 'currentProvider', 'apiKey', 'screenshotDelays', 'constantConversationUrl']);
 
 /**
  * Simple JSON file-based persistence (electron-store is ESM-only v10+).
@@ -58,6 +58,15 @@ class StateManager {
       currentProject: null,
       currentProvider: 'chatgpt',
       apiKey: null,
+      constantConversationUrl: {
+        chatgpt: null,
+        gemini: null,
+        claude: null,
+        kimi: null,
+        deepseek: null,
+        perplexity: null,
+        google: null
+      },
       screenshotDelays: {
         chatgpt: 8,
         gemini: 5,
@@ -139,6 +148,79 @@ class StateManager {
       this.state[key] = { ...this.state[key], ...updates };
       eventBus.emit('stateChanged', { key, value: this.state[key] });
     }
+  }
+
+  isConversationUrl(provider, urlStr) {
+    if (!urlStr) return false;
+    try {
+      const parsed = new URL(urlStr);
+      const path = parsed.pathname;
+      
+      if (provider === 'chatgpt') {
+        return path.includes('/c/');
+      }
+      if (provider === 'gemini') {
+        return path.includes('/app/') && path.split('/').filter(Boolean).length >= 2;
+      }
+      if (provider === 'claude') {
+        return path.includes('/chat/');
+      }
+      if (provider === 'deepseek') {
+        return path.includes('/chat') && path.split('/').filter(Boolean).length >= 2;
+      }
+      if (provider === 'perplexity') {
+        return path.includes('/search/');
+      }
+      if (provider === 'kimi') {
+        return path.includes('/chat/');
+      }
+      if (provider === 'google') {
+        return false;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  getConstantUrl(provider) {
+    const urls = this.get('constantConversationUrl');
+    if (urls && typeof urls === 'object') {
+      return urls[provider] || null;
+    }
+    // Auto-migrate legacy string format to per-provider object
+    if (typeof urls === 'string') {
+      console.log(`[StateManager] Migrating legacy constantConversationUrl string to object format`);
+      const migrated = {
+        chatgpt: urls.includes('chatgpt.com') ? urls : null,
+        gemini: urls.includes('gemini.google.com') ? urls : null,
+        claude: urls.includes('claude.ai') ? urls : null,
+        kimi: urls.includes('kimi.') ? urls : null,
+        deepseek: urls.includes('deepseek.com') ? urls : null,
+        perplexity: urls.includes('perplexity.ai') ? urls : null,
+        google: null
+      };
+      this.set('constantConversationUrl', migrated);
+      return migrated[provider] || null;
+    }
+    return null;
+  }
+
+  setConstantUrl(provider, urlStr) {
+    let urls = this.get('constantConversationUrl');
+    if (!urls || typeof urls !== 'object') {
+      urls = {
+        chatgpt: null,
+        gemini: null,
+        claude: null,
+        kimi: null,
+        deepseek: null,
+        perplexity: null,
+        google: null
+      };
+    }
+    urls[provider] = urlStr;
+    this.set('constantConversationUrl', urls);
   }
 }
 

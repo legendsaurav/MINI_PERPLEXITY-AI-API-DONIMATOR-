@@ -144,6 +144,11 @@ func (r *MessageRepository) AddMessage(ctx context.Context, msg *domain.Message)
 	return nil
 }
 
+func (r *MessageRepository) DeleteByID(ctx context.Context, id string) error {
+	path := fmt.Sprintf("messages?id=eq.%s", id)
+	return r.client.request(ctx, http.MethodDelete, path, nil, nil)
+}
+
 // Memory Repository
 type MemoryRepository struct {
 	client *SupabaseClient

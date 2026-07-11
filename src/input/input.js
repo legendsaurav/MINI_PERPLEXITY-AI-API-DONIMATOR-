@@ -9,8 +9,37 @@
   const input      = document.getElementById('inputField');
   const badge      = document.getElementById('screenshotBadge');
   const enterHint  = document.getElementById('enterHint');
+  const fileChips  = document.getElementById('fileChips');
 
   let hasScreenshot = false;
+
+  // ── Render attached-file chips ──
+  function renderChips(files) {
+    if (!fileChips) return;
+    fileChips.innerHTML = '';
+    if (!Array.isArray(files) || files.length === 0) {
+      fileChips.classList.add('hidden');
+      return;
+    }
+    for (const f of files) {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip' + (f.truncated ? ' truncated' : '');
+      chip.title = (f.name || 'file') + (f.truncated ? ' (truncated)' : '');
+
+      const kind = document.createElement('span');
+      kind.className = 'chip-kind';
+      kind.textContent = f.kind || 'file';
+
+      const name = document.createElement('span');
+      name.className = 'chip-name';
+      name.textContent = f.name || 'file';
+
+      chip.appendChild(kind);
+      chip.appendChild(name);
+      fileChips.appendChild(chip);
+    }
+    fileChips.classList.remove('hidden');
+  }
 
   // ── Focus / blur styling ──
 
@@ -81,6 +110,9 @@
     } else {
       badge.classList.add('hidden');
     }
+
+    // Attached-file chips
+    renderChips(data && data.files);
 
     // Set input value
     input.value = prefill;
