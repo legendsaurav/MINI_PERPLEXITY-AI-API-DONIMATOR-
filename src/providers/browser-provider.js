@@ -24,23 +24,32 @@ class BrowserProvider extends AIProvider {
     BrowserProvider._ipcRegistered = true;
 
     // Listen to messages from ai-preload.js
-    // Emit as "raw" events so StreamManager can buffer/process before overlay receives them
+    // Emit as "raw" events so StreamManager can buffer/process before overlay receives them.
+    // LANE FILTER: only overlay-lane windows feed the overlay stream. Events from the
+    // api lane (website/gateway requests) are handled directly by the HTTP endpoint in
+    // index.js and must NOT leak into the user's overlay.
+    const isOverlay = (event) => hiddenBrowserManager.isLaneSender('overlay', event.sender);
+
     ipcMain.on('ai-chunk', (event, chunk) => {
+      if (!isOverlay(event)) return;
       console.log(`[BrowserProvider] ai-chunk received (${typeof chunk === 'string' ? chunk.length : '?'} chars)`);
       eventBus.emit('rawStreamChunk', chunk);
     });
 
     ipcMain.on('ai-sync', (event, fullText) => {
+      if (!isOverlay(event)) return;
       console.log(`[BrowserProvider] ai-sync received (${typeof fullText === 'string' ? fullText.length : '?'} chars)`);
       eventBus.emit('rawStreamSync', fullText);
     });
 
     ipcMain.on('ai-complete', (event, data) => {
+      if (!isOverlay(event)) return;
       console.log(`[BrowserProvider] ai-complete received:`, JSON.stringify(data).substring(0, 200));
       eventBus.emit('rawStreamFinished', data);
     });
 
     ipcMain.on('ai-error', (event, err) => {
+      if (!isOverlay(event)) return;
       console.log(`[BrowserProvider] ai-error received:`, err);
       eventBus.emit('rawStreamError', err);
     });

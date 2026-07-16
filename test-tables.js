@@ -1,12 +1,19 @@
 async function testTables() {
-  const url = 'https://cowmafailphyzkvodjdl.supabase.co';
-  const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvd21hZmFpbHBoeXprdm9kamRsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTQzOTU1NCwiZXhwIjoyMDk3MDE1NTU0fQ.B9Zl7KYSldGO_8B-LxL-yiaupT0K9jccRChs079VsDU';
-  
+  // Load credentials from environment variables to avoid committing secrets.
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+  if (!url || !key) {
+    console.error('Supabase URL or key not set. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables, or update provider-keys.local.json (ignored).');
+    console.error('Exiting test to avoid using hardcoded credentials.');
+    return;
+  }
+
   const headers = {
-    'apikey': key,
-    'Authorization': `Bearer ${key}`,
+    apikey: key,
+    Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
+    Prefer: 'return=representation'
   };
 
   try {
@@ -60,3 +67,5 @@ async function testTables() {
 }
 
 testTables();
+// Usage: set environment variables and run with Node:
+// SUPABASE_URL=https://your-project.supabase.co SUPABASE_SERVICE_ROLE_KEY=your_key node test-tables.js

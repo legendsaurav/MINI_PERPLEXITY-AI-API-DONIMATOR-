@@ -15,6 +15,8 @@ node_modules_old/
 
 # Generated gateway keys / local secrets (plaintext bearer tokens)
 provider-keys.local.json
+# Local copilot state may contain API keys
+copilot-state.json
 
 # Temporary gateway test config
 test-config.json

@@ -557,8 +557,10 @@ async function waitForLogin(provider, win) {
   return false;
 }
 
-function sendTestMessage(provider, message, imageBase64 = null) {
+function sendTestMessage(provider, message, imageBase64 = null, lane = 'overlay') {
   return new Promise(async (resolve, reject) => {
+    // Accept stream events only from this lane:provider window (no cross-lane bleed).
+    const isMine = (event) => hiddenBrowserManager.isSenderOf(provider, lane, event.sender);
     // 600s (10 min): research-heavy providers (e.g. Kimi extracting a large exam
     // paper) can run for many minutes. The gateway's HTTP client waits up to 12
     // minutes, so this 10-minute cap stays comfortably inside it.
@@ -571,11 +573,13 @@ function sendTestMessage(provider, message, imageBase64 = null) {
     let fullText = '';
 
     const onChunk = (event, chunk) => {
+      if (!isMine(event)) return;
       fullText += chunk;
       console.log(`[Connection] Receiving response... (${fullText.length} chars)`);
     };
 
     const onComplete = (event, data) => {
+      if (!isMine(event)) return;
       clearTimeout(timeout);
       cleanup();
       if (data && data.fullText) {
@@ -586,6 +590,7 @@ function sendTestMessage(provider, message, imageBase64 = null) {
     };
 
     const onError = (event, err) => {
+      if (!isMine(event)) return;
       clearTimeout(timeout);
       cleanup();
       reject(new Error(err || 'Stream error'));
@@ -602,12 +607,12 @@ function sendTestMessage(provider, message, imageBase64 = null) {
     ipcMain.on('ai-error', onError);
 
     try {
-      await browserController.attachStreamObserver(provider);
+      await browserController.attachStreamObserver(provider, lane);
       await sleep(500);
       if (imageBase64) {
-        await browserController.injectImageAndSubmit(provider, message, imageBase64);
+        await browserController.injectImageAndSubmit(provider, message, imageBase64, lane);
       } else {
-        await browserController.injectAndSubmit(provider, message);
+        await browserController.injectAndSubmit(provider, message, lane);
       }
       console.log('[Connection] Test message injected and submitted.');
     } catch (error) {
@@ -1694,14 +1699,15 @@ function flattenMessages(messages) {
 // Force a brand-new chat thread for the given provider by navigating its hidden
 // window to the provider's base URL. Guarantees per-user isolation: a web request
 // never lands in a thread that holds another user's messages.
-async function startFreshChat(provider) {
+async function startFreshChat(provider, lane = 'overlay') {
   try {
-    const win = hiddenBrowserManager.getWindow(provider);
+    const win = hiddenBrowserManager.getWindow(provider, lane);
     if (!win || win.isDestroyed()) return;
     const caps = require('../providers/provider-capabilities').getCapabilities(provider);
     if (!caps || !caps.baseUrl) return;
     const selectors = require('../providers/selector-manager').getSelectors(provider);
-    stateManager.setConstantUrl(provider, null);
+    // Only the overlay lane owns the shared constant-conversation state.
+    if (lane === 'overlay') stateManager.setConstantUrl(provider, null);
     await win.loadURL(caps.baseUrl);
     await new Promise((resolve) => {
       win.webContents.once('did-finish-load', resolve);
@@ -1837,24 +1843,18 @@ const debugServer = http.createServer(async (req, res) => {
 
       const model = body.model || 'mini-perplexity';
       const targetProvider = mapModelToProvider(model);
-      console.log(`[DEBUG-HTTP] Proxying chat request to browser provider: ${targetProvider} (requested model: ${model})${isWebRequest ? ' [web conv=' + body.conversation_id + ']' : ''}`);
+      console.log(`[DEBUG-HTTP] Proxying chat request to browser provider: api:${targetProvider} (requested model: ${model})${isWebRequest ? ' [web conv=' + body.conversation_id + ']' : ''}`);
 
-      const oldProvider = stateManager.get('currentProvider');
-      if (oldProvider !== targetProvider) {
-        console.log(`[Proxy] Target provider (${targetProvider}) differs from current provider (${oldProvider}). Triggering provider switch.`);
-        stateManager.set('currentProvider', targetProvider);
-        eventBus.emit('providerSwitched', targetProvider);
-        // Wait a brief moment for switching and load to settle
-        await sleep(3000);
-      } else {
-        // Ensure the window for targetProvider is initialized and loaded
-        await hiddenBrowserManager.ensureWindow(targetProvider);
-      }
+      // API requests run in their own 'api' browser lane. NEVER touch the global
+      // currentProvider or emit providerSwitched here — those drive the user's
+      // overlay browser, and flipping them would club the two flows together.
+      const API_LANE = 'api';
+      await hiddenBrowserManager.ensureWindow(targetProvider, API_LANE);
 
       // For isolated web turns, always begin a fresh chat so this user's context
       // (re-sent in full above) is the ONLY thing the model sees.
       if (isWebRequest) {
-        await startFreshChat(targetProvider);
+        await startFreshChat(targetProvider, API_LANE);
       }
 
       if (body.stream === true) {
@@ -1880,7 +1880,12 @@ const debugServer = http.createServer(async (req, res) => {
           return newText.substring(i);
         }
 
+        // Only accept events from THIS request's api-lane window; overlay traffic
+        // (or another provider's window) must never bleed into this response.
+        const isMine = (event) => hiddenBrowserManager.isSenderOf(targetProvider, API_LANE, event.sender);
+
         const onChunk = (event, chunk) => {
+          if (!isMine(event)) return;
           if (typeof chunk !== 'string') return;
           lastText += chunk;
           const chunkData = {
@@ -1902,6 +1907,7 @@ const debugServer = http.createServer(async (req, res) => {
         };
 
         const onSync = (event, fullText) => {
+          if (!isMine(event)) return;
           if (typeof fullText !== 'string') return;
           const chunk = getIncrementalChunk(lastText, fullText);
           if (chunk) {
@@ -1927,20 +1933,9 @@ const debugServer = http.createServer(async (req, res) => {
         };
 
         const onComplete = (event, data) => {
+          if (!isMine(event)) return;
           cleanup();
 
-          const win = hiddenBrowserManager.getWindow(targetProvider);
-          if (win) {
-            const finalUrl = win.webContents.getURL();
-            if (stateManager.isConversationUrl(targetProvider, finalUrl)) {
-              const existingUrl = stateManager.getConstantUrl(targetProvider);
-              if (existingUrl !== finalUrl) {
-                stateManager.setConstantUrl(targetProvider, finalUrl);
-                console.log(`[Proxy] Conversation URL captured/updated for ${targetProvider}: ${finalUrl}`);
-              }
-            }
-          }
-          
           if (data && typeof data.fullText === 'string') {
             const chunk = getIncrementalChunk(lastText, data.fullText);
             if (chunk) {
@@ -1984,6 +1979,7 @@ const debugServer = http.createServer(async (req, res) => {
         };
 
         const onError = (event, err) => {
+          if (!isMine(event)) return;
           cleanup();
           res.write(`event: error\ndata: ${JSON.stringify({ error: err || 'Stream error' })}\n\n`);
           res.end();
@@ -2002,44 +1998,23 @@ const debugServer = http.createServer(async (req, res) => {
         ipcMain.on('ai-error', onError);
 
         try {
-          const win = hiddenBrowserManager.getWindow(targetProvider);
+          const win = hiddenBrowserManager.getWindow(targetProvider, API_LANE);
           if (win) {
-            const currentUrl = win.webContents.getURL();
-            if (stateManager.isConversationUrl(targetProvider, currentUrl) && !stateManager.getConstantUrl(targetProvider)) {
-              stateManager.setConstantUrl(targetProvider, currentUrl);
-              console.log(`[Proxy] Automatically locked onto existing conversation URL for ${targetProvider}: ${currentUrl}`);
-            }
-
-            const constantUrl = stateManager.getConstantUrl(targetProvider);
-            if (constantUrl && currentUrl !== constantUrl) {
-              console.log(`[Proxy] Navigating to constant conversation URL for ${targetProvider}: ${constantUrl}`);
-              try {
-                await win.loadURL(constantUrl);
-                await new Promise(resolve => {
-                  win.webContents.once('did-finish-load', resolve);
-                  win.webContents.once('did-fail-load', resolve);
-                  setTimeout(resolve, 6000);
-                });
-                await sleep(1500);
-              } catch (loadErr) {
-                console.error(`[Proxy] Failed to load constant URL: ${loadErr.message}`);
-              }
-            }
-
-            // Check if prompt input elements are present
+            // API lane never uses the overlay's constant conversation URL — every
+            // web turn is a fresh, isolated thread. Just make sure the page has a
+            // usable prompt input, recovering to the base URL if not.
             const selectors = require('../providers/selector-manager').getSelectors(targetProvider);
             let hasInput = await win.webContents.executeJavaScript(`
-              !!(document.querySelector('${selectors.textarea}') || 
-                 document.querySelector('#prompt-textarea') || 
+              !!(document.querySelector('${selectors.textarea}') ||
+                 document.querySelector('#prompt-textarea') ||
                  document.querySelector('[contenteditable="true"]'))
             `).catch(() => false);
 
             if (!hasInput) {
-              console.warn(`[Proxy] No valid prompt input element found on the current page. Recovering to provider base URL...`);
-              stateManager.setConstantUrl(targetProvider, null);
+              console.warn(`[Proxy] [api] No valid prompt input on current page. Recovering to provider base URL...`);
               const caps = require('../providers/provider-capabilities').getCapabilities(targetProvider);
-              console.log(`[Proxy] Loading base URL: ${caps.baseUrl}`);
-              await win.loadURL(caps.baseUrl).catch(err => console.error(`[Proxy] Failed to load base URL: ${err.message}`));
+              console.log(`[Proxy] [api] Loading base URL: ${caps.baseUrl}`);
+              await win.loadURL(caps.baseUrl).catch(err => console.error(`[Proxy] [api] Failed to load base URL: ${err.message}`));
               await new Promise(resolve => {
                 win.webContents.once('did-finish-load', resolve);
                 win.webContents.once('did-fail-load', resolve);
@@ -2049,12 +2024,12 @@ const debugServer = http.createServer(async (req, res) => {
             }
           }
 
-          await browserController.attachStreamObserver(targetProvider);
+          await browserController.attachStreamObserver(targetProvider, API_LANE);
           await sleep(500);
           if (imageBase64) {
-            await browserController.injectImageAndSubmit(targetProvider, userMessage, imageBase64);
+            await browserController.injectImageAndSubmit(targetProvider, userMessage, imageBase64, API_LANE);
           } else {
-            await browserController.injectAndSubmit(targetProvider, userMessage);
+            await browserController.injectAndSubmit(targetProvider, userMessage, API_LANE);
           }
         } catch (err) {
           cleanup();
@@ -2065,8 +2040,8 @@ const debugServer = http.createServer(async (req, res) => {
       }
 
       try {
-        const fullResponse = await sendTestMessage(targetProvider, userMessage, imageBase64);
-        
+        const fullResponse = await sendTestMessage(targetProvider, userMessage, imageBase64, API_LANE);
+
         const crypto = require('crypto');
         const openaiResponse = {
           id: 'chatcmpl-' + crypto.randomUUID(),

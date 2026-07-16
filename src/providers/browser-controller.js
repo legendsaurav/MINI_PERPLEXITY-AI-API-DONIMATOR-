@@ -11,8 +11,8 @@ const stateManager = require('../main/state-manager');
  */
 class BrowserController {
   
-  async injectAndSubmit(provider, promptString) {
-    const win = hiddenBrowserManager.getWindow(provider);
+  async injectAndSubmit(provider, promptString, lane = 'overlay') {
+    const win = hiddenBrowserManager.getWindow(provider, lane);
     if (!win) throw new Error('Hidden window not ready');
 
     const selectors = selectorManager.getSelectors(provider);
@@ -167,8 +167,8 @@ class BrowserController {
     console.log(`[BrowserController] Prompt injection complete.`);
   }
 
-  async attachStreamObserver(provider) {
-    const win = hiddenBrowserManager.getWindow(provider);
+  async attachStreamObserver(provider, lane = 'overlay') {
+    const win = hiddenBrowserManager.getWindow(provider, lane);
     if (!win) throw new Error('Hidden window not ready');
 
     const selectors = selectorManager.getSelectors(provider);
@@ -481,8 +481,8 @@ class BrowserController {
    * @param {string} promptString - The user's text message
    * @param {string} imageBase64 - The screenshot as a base64 data URL (data:image/png;base64,...)
    */
-  async injectImageAndSubmit(provider, promptString, imageBase64) {
-    const win = hiddenBrowserManager.getWindow(provider);
+  async injectImageAndSubmit(provider, promptString, imageBase64, lane = 'overlay') {
+    const win = hiddenBrowserManager.getWindow(provider, lane);
     if (!win) throw new Error('Hidden window not ready');
 
     const selectors = selectorManager.getSelectors(provider);
