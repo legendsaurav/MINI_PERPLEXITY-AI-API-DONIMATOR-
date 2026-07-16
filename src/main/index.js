@@ -1638,25 +1638,27 @@ const mapModelToProvider = (modelName) => {
   return stateManager.get('currentProvider') || 'chatgpt';
 };
 
-// ── Browser serialization queue ───────────────────────────────────────────
-// The browser automation drives ONE window per provider and can only handle a
-// single prompt at a time. When the app is exposed to many website users via the
-// gateway, concurrent requests would collide (interleaved injections, provider
-// switches). This mutex serializes all chat-completions so each request gets the
-// browser to itself; others wait their turn. A depth guard sheds load past a cap.
-let __chatBusy = false;
-const __chatWaiters = [];
-const MAX_CHAT_QUEUE = 8;
-function acquireChatLock() {
+// ── API browser slot pool ───────────────────────────────────────────────────
+// The api lane runs a POOL of independent hidden browsers ("api-0", "api-1", …),
+// so concurrent website requests (e.g. Company Pulse + People-to-know cards) each
+// get their OWN Electron browser window and their own prompt, in parallel — no
+// FIFO queueing behind a single window. A request waits only when every slot is
+// busy; a depth guard sheds load past a cap.
+const API_POOL_SIZE = 3;            // parallel hidden browsers for API requests
+const MAX_CHAT_QUEUE = 8;           // waiters allowed once all slots are busy
+const __apiSlotBusy = new Array(API_POOL_SIZE).fill(false);
+const __apiSlotWaiters = [];
+function acquireApiSlot() {
   return new Promise((resolve) => {
-    if (!__chatBusy) { __chatBusy = true; resolve(); }
-    else __chatWaiters.push(resolve);
+    const free = __apiSlotBusy.findIndex((b) => !b);
+    if (free !== -1) { __apiSlotBusy[free] = true; resolve(free); }
+    else __apiSlotWaiters.push(resolve);
   });
 }
-function releaseChatLock() {
-  const next = __chatWaiters.shift();
-  if (next) next();            // hand the lock straight to the next waiter
-  else __chatBusy = false;
+function releaseApiSlot(slot) {
+  const next = __apiSlotWaiters.shift();
+  if (next) next(slot);        // hand this slot straight to the next waiter
+  else __apiSlotBusy[slot] = false;
 }
 
 // Render a full OpenAI-style messages[] history into a single self-contained
@@ -1829,26 +1831,26 @@ const debugServer = http.createServer(async (req, res) => {
         userMessage = flattenMessages(messages) || userMessage;
       }
 
-      // Serialize browser access (the automation is single-flight). Shed load if
-      // too many requests are already queued so callers get a clear signal.
-      if (__chatWaiters.length >= MAX_CHAT_QUEUE) {
+      // Grab a free browser slot from the api pool (parallel across slots). Shed
+      // load if too many requests are already waiting so callers get a clear signal.
+      if (__apiSlotWaiters.length >= MAX_CHAT_QUEUE) {
         res.statusCode = 503;
         return res.end(JSON.stringify({ error: 'Assistant is busy handling other requests. Please retry in a moment.' }));
       }
-      await acquireChatLock();
+      const __slot = await acquireApiSlot();
       let __lockReleased = false;
-      const __releaseLock = () => { if (!__lockReleased) { __lockReleased = true; releaseChatLock(); } };
-      // Release the browser once this response completes (finish or client disconnect).
+      const __releaseLock = () => { if (!__lockReleased) { __lockReleased = true; releaseApiSlot(__slot); } };
+      // Release the browser slot once this response completes (finish or client disconnect).
       res.once('close', __releaseLock);
 
       const model = body.model || 'mini-perplexity';
       const targetProvider = mapModelToProvider(model);
-      console.log(`[DEBUG-HTTP] Proxying chat request to browser provider: api:${targetProvider} (requested model: ${model})${isWebRequest ? ' [web conv=' + body.conversation_id + ']' : ''}`);
-
-      // API requests run in their own 'api' browser lane. NEVER touch the global
-      // currentProvider or emit providerSwitched here — those drive the user's
-      // overlay browser, and flipping them would club the two flows together.
-      const API_LANE = 'api';
+      // Each pool slot is its own lane ("api-0", "api-1", …) → its own Electron
+      // browser window. Two concurrent website requests land in different slots
+      // and run genuinely in parallel with separate prompts. NEVER touch the
+      // global currentProvider here — that drives the user's overlay browser.
+      const API_LANE = `api-${__slot}`;
+      console.log(`[DEBUG-HTTP] Proxying chat request to browser provider: ${API_LANE}:${targetProvider} (requested model: ${model})${isWebRequest ? ' [web conv=' + body.conversation_id + ']' : ''}`);
       await hiddenBrowserManager.ensureWindow(targetProvider, API_LANE);
 
       // For isolated web turns, always begin a fresh chat so this user's context
